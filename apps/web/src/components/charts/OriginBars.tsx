@@ -30,13 +30,13 @@ const LABELS = {
   outros: "Outros",
 };
 
-type Row = { key: keyof typeof LABELS; visitas: number; convertidas: number; receita: number; taxaConversao: number };
+interface Row { key: keyof typeof LABELS; visitas: number; convertidas: number; receita: number; taxaConversao: number }
 
 export function OriginBars({ data }: { data: OriginBreakdown | undefined }) {
   if (!data) {
     return <div className="note">Sem dados de origem para o período.</div>;
   }
-  const order: Array<keyof typeof LABELS> = ["artista", "social_pago", "social_organico", "passante", "outros"];
+  const order: (keyof typeof LABELS)[] = ["artista", "social_pago", "social_organico", "passante", "outros"];
   const rows: Row[] = order.map((k) => ({
     key: k,
     visitas: data[k].visitas,

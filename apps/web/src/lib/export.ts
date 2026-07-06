@@ -11,9 +11,6 @@ import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import type { Report } from "@capone/shared";
 
-const fmtBRL = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-
 function ts() {
   const d = new Date();
   return d.toISOString().replace(/[:.]/g, "-").slice(0, 19);

@@ -151,7 +151,32 @@ export default function Dashboard({ user }: { user: { id: string; email: string 
     location.href = "/login";
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    // Wrapper async pra evitar set-state síncrono no effect (regra react-hooks/set-state-in-effect).
+    // O ideal seria reagir a `[start, end]`, mas o `load()` depende de auth que só fica
+    // disponível client-side. Carregamos 1x no mount; mudanças de período usam o botão "Atualizar".
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setErr(null);
+      const { data: sess } = await supabaseBrowser().auth.getSession();
+      const r = await authedFetch(
+        `${process.env.NEXT_PUBLIC_API_BASE}/api/reports?start=${start}&end=${end}`,
+        {},
+        sess.session,
+      );
+      if (cancelled) return;
+      if (!r.ok) {
+        setErr(`API ${r.status}: ${await r.text()}`);
+      } else {
+        setReport(await r.json());
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+    // start/end são deps mas só no mount queremos disparar — ver comentário acima.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="wrap" id="dashboard-root">

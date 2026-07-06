@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/confirm", "/auth/error"];
-type CookieToSet = { name: string; value: string; options?: CookieOptions };
+interface CookieToSet { name: string; value: string; options?: CookieOptions }
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();

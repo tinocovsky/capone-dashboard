@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
-type CookieToSet = { name: string; value: string; options?: CookieOptions };
+interface CookieToSet { name: string; value: string; options?: CookieOptions }
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);

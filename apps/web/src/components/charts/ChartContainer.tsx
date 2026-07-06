@@ -8,7 +8,6 @@
  */
 import {
   ResponsiveContainer,
-  Tooltip,
   type TooltipProps,
 } from "recharts";
 
@@ -40,7 +39,7 @@ export function ChartContainer({ children, height = 240 }: { children: React.Rea
 }
 
 // Tipo mínimo do payload (Recharts exporta um tipo mas é genérico)
-type TooltipEntry = { name?: string; value?: number; color?: string };
+interface TooltipEntry { name?: string; value?: number; color?: string }
 
 /** Tooltip dark com formatação automática (BRL se valor >= 1000, % se 0..1). */
 export function DarkTooltip(props: TooltipProps<number, string> & {

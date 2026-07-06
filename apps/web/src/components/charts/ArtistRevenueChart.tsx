@@ -3,7 +3,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList, Cell } from "recharts";
 import { ChartContainer, DarkTooltip, fmtBRL, COLORS } from "./ChartContainer";
 
-type Row = {
+interface Row {
   label: string;
   total: number;
   convertidos: number;
@@ -11,7 +11,7 @@ type Row = {
   taxaConversao: number;
   ticketMedio: number;
   receitaConvertida: number;
-};
+}
 
 export function ArtistRevenueChart({ rows, limit = 12 }: { rows: Row[]; limit?: number }) {
   if (!rows.length) return null;

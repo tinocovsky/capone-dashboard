@@ -10,5 +10,6 @@ dist
 .env.*.txt
 .DS_Store
 coverage
+*.tsbuildinfo
 
 SUPABASE_KEYS.txt

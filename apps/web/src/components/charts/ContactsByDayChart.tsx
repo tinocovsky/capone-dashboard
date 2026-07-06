@@ -3,7 +3,7 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from "recharts";
 import { ChartContainer, DarkTooltip, fmtPct, COLORS } from "./ChartContainer";
 
-type Row = { label: string; count: number; percent: number };
+interface Row { label: string; count: number; percent: number }
 
 export function ContactsByDayChart({ rows, total }: { rows: Row[]; total: number }) {
   if (!rows.length) return null;

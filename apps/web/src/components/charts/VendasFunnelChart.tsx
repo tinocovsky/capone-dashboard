@@ -1,9 +1,9 @@
 "use client";
 /** FunnelChart: estágios do pipeline Vendas com taxa de conversão entre eles. */
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList, Cell } from "recharts";
-import { ChartContainer, DarkTooltip, fmtPct, COLORS } from "./ChartContainer";
+import { ChartContainer, DarkTooltip, COLORS } from "./ChartContainer";
 
-type Stage = { name: string; count: number; rate: number };
+interface Stage { name: string; count: number; rate: number }
 
 export function VendasFunnelChart({ stages }: { stages: Stage[] }) {
   if (!stages.length) return null;

@@ -1,9 +1,9 @@
 "use client";
 /** AreaChart: receita acumulada por dia (mostra ritmo de fechamento do mês). */
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { ChartContainer, DarkTooltip, fmtBRL } from "./ChartContainer";
 
-type Row = { date: string; receita: number; acumulado: number };
+interface Row { date: string; receita: number; acumulado: number }
 
 export function RevenueAreaChart({ rows }: { rows: Row[] }) {
   if (!rows.length) return null;
