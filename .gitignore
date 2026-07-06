@@ -1,0 +1,14 @@
+node_modules
+dist
+.next
+.turbo
+*.log
+.env
+.env.local
+.env.*.local
+.env.txt
+.env.*.txt
+.DS_Store
+coverage
+
+SUPABASE_KEYS.txt

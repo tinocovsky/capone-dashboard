@@ -1,0 +1,24 @@
+-- Migration 003: auth config (não usa SQL, é um checklist)
+-- Rodar manualmente em Supabase Dashboard → Authentication:
+--
+-- 1) URL Configuration → Redirect URLs (adicione todos):
+--      http://localhost:3000/auth/callback
+--      http://localhost:3001/auth/callback
+--      https://<seu-dominio-producao>/auth/callback
+--
+-- 2) Email Templates → Customize "Magic Link" / "Confirm signup"
+--      Subject: "Acesse o Dashboard Capone"
+--      Body: "<a href='{{ .ConfirmationURL }}'>Acessar dashboard</a>"
+--
+-- 3) (Opcional) Providers → Google OAuth:
+--      Enable + adicionar Client ID/Secret
+--      Redirect URI: https://iupveltzomsnigvpypso.supabase.co/auth/v1/callback
+--
+-- 4) Sign In / Sign Up settings:
+--      - Enable email signups: ON (ou OFF se for só convite)
+--      - Confirm email: ON (recomendado)
+--      - Minimum password length: 8
+--      - Autoconfirm: OFF (a menos que queira magic link sem confirmação)
+--
+-- Esta migration é apenas documentação — executar manualmente.
+select 'auth_config_check' as step, 'Rodar manualmente no Dashboard' as action;
