@@ -24,34 +24,51 @@ const BROWSER_UA =
 const MAX_PAGES = 100; // GHL limita page*pageLimit ≤ 10000; com 100 por página, máx 100 páginas = 10k
 const PAGE_SIZE = 100; // máximo aceito pelo API
 const FETCH_TIMEOUT_MS = 60_000; // 60s por request; GHL pode demorar muito em páginas altas
+const MAX_RETRIES = 3; // GHL falha ~5% das chamadas de forma intermitente; retry resolve
+const RETRY_BASE_MS = 500;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// 400 "Error occurred while searching for contact" é instabilidade do GHL, não erro de payload:
+// a mesma página funciona no retry (medido jul/2026: ~5 falhas a cada 100 chamadas).
+function isRetryable(status: number, body: string): boolean {
+  if (status === 429 || status >= 500) return true;
+  return status === 400 && body.includes("Error occurred while searching");
+}
 
 // Detecta se o GHL retornou o erro de "result window exceeded" para parar a paginação
 class ResultWindowExceeded extends Error {}
 async function ghlFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const url = path.startsWith("http") ? path : `${env.GHL_API_BASE}${path}`;
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      ...init,
-      signal: ctl.signal,
-      headers: {
-        Authorization: `Bearer ${env.GHL_API_TOKEN}`,
-        "User-Agent": BROWSER_UA,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Version: "2021-07-28",
-        ...(init.headers ?? {}),
-      },
-    });
-    if (!res.ok) {
+  for (let attempt = 0; ; attempt++) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        ...init,
+        signal: ctl.signal,
+        headers: {
+          Authorization: `Bearer ${env.GHL_API_TOKEN}`,
+          "User-Agent": BROWSER_UA,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          Version: "2021-07-28",
+          ...(init.headers ?? {}),
+        },
+      });
+      if (res.ok) return res;
       const body = await res.text().catch(() => "");
       if (body.includes("result window")) throw new ResultWindowExceeded(body.slice(0, 200));
+      if (attempt < MAX_RETRIES && isRetryable(res.status, body)) {
+        const wait = RETRY_BASE_MS * 2 ** attempt;
+        console.warn(`[ghl] ${res.status} em ${path} (tentativa ${attempt + 1}/${MAX_RETRIES + 1}), retry em ${wait}ms`);
+        await sleep(wait);
+        continue;
+      }
       throw new Error(`GHL ${res.status} ${res.statusText} em ${path} — ${body.slice(0, 300)}`);
+    } finally {
+      clearTimeout(t);
     }
-    return res;
-  } finally {
-    clearTimeout(t);
   }
 }
 
