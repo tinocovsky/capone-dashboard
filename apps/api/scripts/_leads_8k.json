@@ -1,0 +1,547 @@
+[
+  {
+    "nome": "Iury Sena de Jesus",
+    "telefone": "+557996066906",
+    "cpf": "85931315578",
+    "email": "junioramorim520@gmail.com",
+    "data_visita_agendada": "2026-06-18",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Boca",
+    "valor_pago": 17000,
+    "pipeline": "Pós vendas",
+    "stage_id": "886d0528-7883-44e6-b534-8a849bd1aaff",
+    "fonte_negocio_macro": "Social Orgânico (Inb)",
+    "canal_negocio": "Instagram (SO - Inb)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "Social media",
+        "isFirst": true,
+        "medium": "whatsapp"
+      },
+      {
+        "pageUrl": "https://www.instagram.com/p/DZQEApBjKjM/",
+        "utmSessionSource": "Paid Social",
+        "isLast": true,
+        "adName": "O estúdio definitivo em Salvador para o seu grande fechamento!",
+        "medium": "whatsapp",
+        "utmAdId": "120249795438060264",
+        "url": "https://www.instagram.com/p/DZQEApBjKjM/"
+      }
+    ],
+    "opp_id": "WcSFyn4JYGIKHZ80eBe7",
+    "contact_id": "ebg2tJgWs2Ywjh4amfq3",
+    "opp_created": "2026-06-20T19:00:23.702Z",
+    "opp_lastStage": "2026-07-06T12:09:00.579Z"
+  },
+  {
+    "nome": "Adriano Santos Oliveira",
+    "telefone": "+5571999736364",
+    "cpf": "72885998504",
+    "email": "adriano.adrianoaso@gmail.com",
+    "data_visita_agendada": "2026-06-15",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Boca",
+    "valor_pago": 15000,
+    "pipeline": "Pós vendas",
+    "stage_id": "0ca4eafb-70f2-4428-b371-cdeece0a9d06",
+    "fonte_negocio_macro": "Artistas (Art)",
+    "canal_negocio": "Artistas (Art - Art)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "manual"
+      }
+    ],
+    "opp_id": "9DClcarjg0q65P0Ph47W",
+    "contact_id": "iRAIxVgNSEVaFDsXhHhx",
+    "opp_created": "2026-06-16T13:00:56.704Z",
+    "opp_lastStage": "2026-07-06T12:04:55.601Z"
+  },
+  {
+    "nome": "gilmar",
+    "telefone": "+557998941088",
+    "cpf": "85098841534",
+    "email": "souzagiba40@gmail.com",
+    "data_visita_agendada": "2026-06-07",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Boca",
+    "valor_pago": 13000,
+    "pipeline": "Pós vendas",
+    "stage_id": "0ca4eafb-70f2-4428-b371-cdeece0a9d06",
+    "fonte_negocio_macro": "Social Pago (Inb)",
+    "canal_negocio": "Instagram (SP - Inb)",
+    "atribuicoes": [
+      {
+        "pageUrl": "https://www.instagram.com/p/DOruWa8jOeq/",
+        "utmSessionSource": "Paid Social",
+        "adName": "Capone Club 🔥",
+        "isFirst": true,
+        "medium": "whatsapp",
+        "utmAdId": "120234581120750264",
+        "url": "https://www.instagram.com/p/DOruWa8jOeq/"
+      },
+      {
+        "pageUrl": "https://www.instagram.com/p/DOruWa8jOeq/",
+        "utmSessionSource": "Paid Social",
+        "isLast": true,
+        "adName": "Capone Club 🔥",
+        "medium": "whatsapp",
+        "utmAdId": "120234581120750264",
+        "url": "https://www.instagram.com/p/DOruWa8jOeq/"
+      }
+    ],
+    "opp_id": "uxnpPx5yLhIcqblDafnI",
+    "contact_id": "7dMeOSi66Nmq0IVC6hY4",
+    "opp_created": "2026-04-22T03:42:12.810Z",
+    "opp_lastStage": "2026-07-01T15:47:59.242Z"
+  },
+  {
+    "nome": "Cristiane Mello",
+    "telefone": "+5561985527255",
+    "cpf": "051.647.731-55",
+    "email": "cristianemellosouza@gmail.com",
+    "data_visita_agendada": "2026-06-04",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Ktrin",
+    "valor_pago": 12350,
+    "pipeline": "Pós vendas",
+    "stage_id": "4269b040-0303-4526-8f71-d51755ea55d1",
+    "fonte_negocio_macro": "Artistas (Art)",
+    "canal_negocio": "Artistas (Art - Art)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "manual"
+      }
+    ],
+    "opp_id": "ND77OTEKAyBYwZVlkLI3",
+    "contact_id": "qd3Qp0qGBryyFKATZuRA",
+    "opp_created": "2026-06-04T18:57:11.778Z",
+    "opp_lastStage": "2026-06-09T18:19:54.295Z"
+  },
+  {
+    "nome": "Luis henrique",
+    "telefone": "+557193127935",
+    "cpf": null,
+    "email": null,
+    "data_visita_agendada": "2026-06-11",
+    "tipo_servico": "Cobertura",
+    "artista_escolhido": "Hakila",
+    "valor_pago": 12000,
+    "pipeline": "Vendas",
+    "stage_id": "3cabe36c-eb9b-4313-9147-d79a3122a28f",
+    "fonte_negocio_macro": "Social Pago (Inb)",
+    "canal_negocio": "Instagram (SP - Inb)",
+    "atribuicoes": [
+      {
+        "pageUrl": "https://www.instagram.com/p/DZQEBVKDPSm/",
+        "utmSessionSource": "Paid Social",
+        "adName": "Dê adeus àquela tatuagem antiga!",
+        "isFirst": true,
+        "medium": "whatsapp",
+        "utmAdId": "120249778994980264",
+        "url": "https://www.instagram.com/p/DZQEBVKDPSm/"
+      },
+      {
+        "pageUrl": "https://www.instagram.com/p/DZQEBVKDPSm/",
+        "utmSessionSource": "Paid Social",
+        "isLast": true,
+        "adName": "Dê adeus àquela tatuagem antiga!",
+        "medium": "whatsapp",
+        "utmAdId": "120249778994980264",
+        "url": "https://www.instagram.com/p/DZQEBVKDPSm/"
+      }
+    ],
+    "opp_id": "69hAAV3moUxgId4CvVSV",
+    "contact_id": "BpGrT25JHjsz7bJ2Eqd1",
+    "opp_created": "2026-06-12T14:51:44.778Z",
+    "opp_lastStage": "2026-06-12T14:52:50.049Z"
+  },
+  {
+    "nome": "Tiago Almeida",
+    "telefone": "+557193633263",
+    "cpf": "034.510.855-85",
+    "email": "tiago.almeida7386@icloud.com",
+    "data_visita_agendada": "2026-05-20",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Isaac Tocinho",
+    "valor_pago": 12000,
+    "pipeline": "Vendas",
+    "stage_id": "3cabe36c-eb9b-4313-9147-d79a3122a28f",
+    "fonte_negocio_macro": "Social Orgânico (Inb)",
+    "canal_negocio": "Instagram (SO - Inb)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "Social media",
+        "isFirst": true,
+        "medium": "whatsapp"
+      },
+      {
+        "utmSessionSource": "Social media",
+        "isLast": true,
+        "medium": "whatsapp"
+      }
+    ],
+    "opp_id": "GBD92jbOgI5MYmhuRWgr",
+    "contact_id": "NoD2aYeGcoMaMNyyUn4W",
+    "opp_created": "2026-05-20T18:14:54.300Z",
+    "opp_lastStage": "2026-05-20T18:16:10.320Z"
+  },
+  {
+    "nome": "Hélio Carneiro Carneiro",
+    "telefone": "+5571996488616",
+    "cpf": "85806280594",
+    "email": "helioj8@gmai.com",
+    "data_visita_agendada": "2026-04-30",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Isaac Tocinho",
+    "valor_pago": 12000,
+    "pipeline": "Vendas",
+    "stage_id": "2d790d25-30f6-4480-8e90-dcac1b007599",
+    "fonte_negocio_macro": "Artistas (Art)",
+    "canal_negocio": "Artistas (Art - Art)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "manual"
+      }
+    ],
+    "opp_id": "1V1mhkm3kufmPvKerpdR",
+    "contact_id": "7YJ7UAY149pGhTLUVyNJ",
+    "opp_created": "2026-04-30T14:48:17.568Z",
+    "opp_lastStage": "2026-05-19T14:11:05.289Z"
+  },
+  {
+    "nome": "GEFERSON Alves dos Santos",
+    "telefone": "+5571993870283",
+    "cpf": "06759905563",
+    "email": "gerfersonalves784@gmail.com",
+    "data_visita_agendada": "2026-05-30",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Isaac Tocinho",
+    "valor_pago": 12000,
+    "pipeline": "Pós vendas",
+    "stage_id": "4269b040-0303-4526-8f71-d51755ea55d1",
+    "fonte_negocio_macro": "Artistas (Art)",
+    "canal_negocio": "Artistas (Art - Art)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "manual"
+      },
+      {
+        "pageUrl": "https://api.leadconnectorhq.com/widget/form/k0wJ6GRCel29HnZ1RV5m",
+        "utmSessionSource": "Direct traffic",
+        "isLast": true,
+        "ip": "2804:214:81f1:5dbd:7508:57ed:9260:7c1d",
+        "medium": "form",
+        "mediumId": "k0wJ6GRCel29HnZ1RV5m",
+        "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1 [WAiOS/2.26.20]",
+        "url": "https://api.leadconnectorhq.com/widget/form/k0wJ6GRCel29HnZ1RV5m"
+      }
+    ],
+    "opp_id": "FR9UGsNDfZ1zLKUjxJno",
+    "contact_id": "lxdSM2zvM1fJkFF5n5Ou",
+    "opp_created": "2026-06-02T12:59:49.013Z",
+    "opp_lastStage": "2026-06-02T14:31:33.285Z"
+  },
+  {
+    "nome": "Allan Bueno Ribeiro Barreto Bueno Ribeiro Barreto",
+    "telefone": null,
+    "cpf": "02219099580",
+    "email": "allanbuenno@hotmail.com",
+    "data_visita_agendada": "2026-05-15",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Hakila",
+    "valor_pago": 12000,
+    "pipeline": "Pós vendas",
+    "stage_id": "886d0528-7883-44e6-b534-8a849bd1aaff",
+    "fonte_negocio_macro": "Social Pago (Inb)",
+    "canal_negocio": "Instagram (SP - Inb)",
+    "atribuicoes": [
+      {
+        "pageUrl": "https://www.instagram.com/p/DOruWa8jOeq/",
+        "utmSessionSource": "Paid Social",
+        "adName": "Capone Club 🔥",
+        "isFirst": true,
+        "medium": "whatsapp",
+        "utmAdId": "120234581120750264",
+        "url": "https://www.instagram.com/p/DOruWa8jOeq/"
+      },
+      {
+        "pageUrl": "https://www.instagram.com/p/DOruWa8jOeq/",
+        "utmSessionSource": "Paid Social",
+        "isLast": true,
+        "adName": "Capone Club 🔥",
+        "medium": "whatsapp",
+        "utmAdId": "120234581120750264",
+        "url": "https://www.instagram.com/p/DOruWa8jOeq/"
+      }
+    ],
+    "opp_id": "YhUw21bhVFVfYRhZn7Bv",
+    "contact_id": "0E7cpzycyHEBRX5B1kbL",
+    "opp_created": "2026-05-15T22:00:21.699Z",
+    "opp_lastStage": "2026-06-05T12:05:34.540Z"
+  },
+  {
+    "nome": "Pedro Brito",
+    "telefone": "+557187800223",
+    "cpf": "86564320523",
+    "email": "pedroflbrito@gmail.com",
+    "data_visita_agendada": "2026-07-03",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Boca",
+    "valor_pago": 11000,
+    "pipeline": "Pós vendas",
+    "stage_id": "4269b040-0303-4526-8f71-d51755ea55d1",
+    "fonte_negocio_macro": "Social Orgânico (Inb)",
+    "canal_negocio": "Instagram (SO - Inb)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "Social media",
+        "isFirst": true,
+        "medium": "whatsapp"
+      },
+      {
+        "utmSessionSource": "Social media",
+        "isLast": true,
+        "medium": "whatsapp"
+      }
+    ],
+    "opp_id": "RIVLWoubkDVw9HBsB0m5",
+    "contact_id": "PnNbdivvaiTQ0tCZHtQe",
+    "opp_created": "2026-07-03T20:02:14.704Z",
+    "opp_lastStage": "2026-07-03T20:03:13.326Z"
+  },
+  {
+    "nome": "Iuri Mattos Marques",
+    "telefone": "+5571987865353",
+    "cpf": "01394833571",
+    "email": "iurimmarques@hotmail.com",
+    "data_visita_agendada": "2026-05-19",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Isaac Tocinho",
+    "valor_pago": 10500,
+    "pipeline": "Vendas",
+    "stage_id": "3cabe36c-eb9b-4313-9147-d79a3122a28f",
+    "fonte_negocio_macro": "Artistas (Art)",
+    "canal_negocio": "Artistas (Art - Art)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "manual"
+      }
+    ],
+    "opp_id": "PM46WYWlxc9c3cgJLhWR",
+    "contact_id": "dV2v4g3YB062L5LpvDYi",
+    "opp_created": "2026-05-20T15:59:19.939Z",
+    "opp_lastStage": "2026-05-20T16:00:32.015Z"
+  },
+  {
+    "nome": "Alef Nascimento De Oliveira Nascimento de Oliveira",
+    "telefone": "+7197184519",
+    "cpf": "85953106530",
+    "email": "alefoliveira3488@gmail.com",
+    "data_visita_agendada": "2026-05-15",
+    "tipo_servico": "Cobertura",
+    "artista_escolhido": "Isaac Tocinho",
+    "valor_pago": 10000,
+    "pipeline": "Vendas",
+    "stage_id": "3cabe36c-eb9b-4313-9147-d79a3122a28f",
+    "fonte_negocio_macro": "Social Pago (Inb)",
+    "canal_negocio": "Instagram (SP - Inb)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "Social media",
+        "isFirst": true,
+        "medium": "whatsapp"
+      },
+      {
+        "utmSessionSource": "Social media",
+        "isLast": true,
+        "medium": "whatsapp"
+      }
+    ],
+    "opp_id": "Q5ZFilvgcxOYER9DjMuU",
+    "contact_id": "A7JDSbuTpJ0kZPOyZG7j",
+    "opp_created": "2026-05-15T17:32:15.665Z",
+    "opp_lastStage": "2026-05-15T17:33:32.538Z"
+  },
+  {
+    "nome": "Maurilio barradas",
+    "telefone": "+5571982026789",
+    "cpf": "828.243.985-15",
+    "email": "mauriliobarradas@hotmail.com",
+    "data_visita_agendada": "2026-04-21",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Ktrin",
+    "valor_pago": 10000,
+    "pipeline": "Vendas",
+    "stage_id": "2d790d25-30f6-4480-8e90-dcac1b007599",
+    "fonte_negocio_macro": "Artistas (Art)",
+    "canal_negocio": "Artistas (Art - Art)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "csv_import"
+      }
+    ],
+    "opp_id": "9dBg5lL11cGZCvzMvEzE",
+    "contact_id": "6OHwdfBs7iaEGWHWfYY7",
+    "opp_created": "2026-04-29T12:52:07.150Z",
+    "opp_lastStage": "2026-04-29T12:54:20.106Z"
+  },
+  {
+    "nome": "Samuel dos santos pereira",
+    "telefone": "+5571992789790",
+    "cpf": "04774603562",
+    "email": "samuelpereirab2c@gmail.com",
+    "data_visita_agendada": "2026-06-19",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Isaac Tocinho",
+    "valor_pago": 10000,
+    "pipeline": "Pós vendas",
+    "stage_id": "0ca4eafb-70f2-4428-b371-cdeece0a9d06",
+    "fonte_negocio_macro": "Social Pago (Inb)",
+    "canal_negocio": "Instagram (SP - Inb)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "csv_import"
+      },
+      {
+        "pageUrl": "https://www.instagram.com/p/DYm27TGDM2I/",
+        "utmSessionSource": "Paid Social",
+        "isLast": true,
+        "adName": "As vagas desta semana estão acabando. Agenda a sua visita gratuita. 👇",
+        "medium": "whatsapp",
+        "utmAdId": "120247974321390264",
+        "url": "https://www.instagram.com/p/DYm27TGDM2I/"
+      }
+    ],
+    "opp_id": "3azZqcm4TjRt2LwJVDDB",
+    "contact_id": "jKEdl3uGundIX7WFsW7m",
+    "opp_created": "2026-04-14T21:15:32.863Z",
+    "opp_lastStage": "2026-07-06T12:05:13.886Z"
+  },
+  {
+    "nome": "alexandre del rey bastos",
+    "telefone": "+557381338171",
+    "cpf": "01349949574",
+    "email": "xandedelrey32@gmail.com",
+    "data_visita_agendada": "2026-05-09",
+    "tipo_servico": "Cobertura, Realismo (Preto e cinza)",
+    "artista_escolhido": "Boca",
+    "valor_pago": 9500,
+    "pipeline": "Vendas",
+    "stage_id": "2d790d25-30f6-4480-8e90-dcac1b007599",
+    "fonte_negocio_macro": "Social Pago (Inb)",
+    "canal_negocio": "Instagram (SP - Inb)",
+    "atribuicoes": [
+      {
+        "pageUrl": "https://www.instagram.com/p/DOruWa8jOeq/",
+        "utmSessionSource": "Paid Social",
+        "adName": "Capone Club 🔥",
+        "isFirst": true,
+        "medium": "whatsapp",
+        "utmAdId": "120234581120750264",
+        "url": "https://www.instagram.com/p/DOruWa8jOeq/"
+      },
+      {
+        "pageUrl": "https://www.instagram.com/p/DOruWa8jOeq/",
+        "utmSessionSource": "Paid Social",
+        "isLast": true,
+        "adName": "Capone Club 🔥",
+        "medium": "whatsapp",
+        "utmAdId": "120234581120750264",
+        "url": "https://www.instagram.com/p/DOruWa8jOeq/"
+      }
+    ],
+    "opp_id": "BnNLWhoUWcBK3JbuLEoZ",
+    "contact_id": "I7YfCglR0NtOzbpqGt65",
+    "opp_created": "2026-05-09T17:48:10.716Z",
+    "opp_lastStage": "2026-05-09T17:50:14.337Z"
+  },
+  {
+    "nome": "Você Bezerra",
+    "telefone": "+5511933439181",
+    "cpf": null,
+    "email": "luandersonbezerra@sevenxpro.com.br",
+    "data_visita_agendada": "2025-09-03",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Boca",
+    "valor_pago": 9000,
+    "pipeline": "Vendas",
+    "stage_id": "2d790d25-30f6-4480-8e90-dcac1b007599",
+    "fonte_negocio_macro": "Social Orgânico (Inb)",
+    "canal_negocio": "Facebook (SO - Inb)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "csv_import"
+      }
+    ],
+    "opp_id": "d5tPPkSeK8TLI5D0nWbv",
+    "contact_id": "NjN4puca8o823dUYoe7c",
+    "opp_created": "2026-05-07T17:14:43.913Z",
+    "opp_lastStage": "2026-05-07T17:15:37.342Z"
+  },
+  {
+    "nome": "Victor Miguel Gradim",
+    "telefone": "+557198630196",
+    "cpf": "04774008508",
+    "email": "milhazesvictor@hotmail.com",
+    "data_visita_agendada": "2026-04-25",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Boca",
+    "valor_pago": 9000,
+    "pipeline": "Vendas",
+    "stage_id": "2d790d25-30f6-4480-8e90-dcac1b007599",
+    "fonte_negocio_macro": "Passante (Pas)",
+    "canal_negocio": "Passante (Pas - Pas)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "manual"
+      }
+    ],
+    "opp_id": "2hjFKedmeXTtJKLW68S8",
+    "contact_id": "twRMWhpYKhtythdkwyZk",
+    "opp_created": "2026-04-25T15:16:47.975Z",
+    "opp_lastStage": "2026-04-27T12:03:48.609Z"
+  },
+  {
+    "nome": "Elias Oliveira Teles",
+    "telefone": "+5575981692725",
+    "cpf": "03568685590",
+    "email": "eliasteles1@hotmail.com",
+    "data_visita_agendada": "2026-04-20",
+    "tipo_servico": "Realismo (Preto e cinza)",
+    "artista_escolhido": "Boca",
+    "valor_pago": 8500,
+    "pipeline": "Vendas",
+    "stage_id": "2d790d25-30f6-4480-8e90-dcac1b007599",
+    "fonte_negocio_macro": "Artistas (Art)",
+    "canal_negocio": "Artistas (Art - Art)",
+    "atribuicoes": [
+      {
+        "utmSessionSource": "CRM UI",
+        "isFirst": true,
+        "medium": "manual"
+      }
+    ],
+    "opp_id": "GwKExy0zbPWJeSO7MaXo",
+    "contact_id": "8eilkwc4gBIJNonJgjP1",
+    "opp_created": "2026-04-18T20:39:27.744Z",
+    "opp_lastStage": "2026-05-12T15:56:37.097Z"
+  }
+]
