@@ -1,13 +1,26 @@
 import { Router } from "express";
+import { z } from "zod";
 import { ReportQuerySchema } from "@capone/shared";
 import { requireAuth, type AuthedRequest } from "../auth.js";
-import { fetchContactsInRange, fetchOppsInRange } from "../ghl.js";
-import { getCachedReport, setCachedReport, saveSnapshot, writeAudit } from "../db.js";
+import { fetchAppointmentsInRange, fetchContactsByIds, fetchContactsInRange, fetchOppsInRange } from "../ghl.js";
+import type { GhlContact } from "@capone/shared";
+import { getCachedReport, setCachedReport, saveSnapshot, getSnapshot, listSnapshots, writeAudit } from "../db.js";
 import { buildReport } from "../report.js";
 
 export const reports = Router();
 
 reports.use(requireAuth());
+
+/** Contatos de agendamentos/opps criados fora do período — buscados só pra
+ *  classificar a origem (sessionSource). */
+async function fetchMissingContacts(
+  contacts: GhlContact[],
+  ids: Array<string | null | undefined>,
+): Promise<GhlContact[]> {
+  const known = new Set(contacts.map((c) => c.id));
+  const missing = ids.filter((id): id is string => !!id && !known.has(id));
+  return fetchContactsByIds(missing);
+}
 
 /** GET /api/reports?start=YYYY-MM-DD&end=YYYY-MM-DD&forceRefresh=0|1
  *  Retorna o relatório completo. Cache 5 min. */
@@ -25,8 +38,16 @@ reports.get("/", async (req: AuthedRequest, res, next) => {
       }
     }
 
-    const [contacts, opps] = await Promise.all([fetchContactsInRange(start, end), fetchOppsInRange(start, end)]);
-    const report = buildReport(start, end, contacts, opps);
+    const [contacts, opps, appts] = await Promise.all([
+      fetchContactsInRange(start, end),
+      fetchOppsInRange(start, end),
+      fetchAppointmentsInRange(start, end),
+    ]);
+    const extraContacts = await fetchMissingContacts(contacts, [
+      ...appts.map((a) => a.contactId),
+      ...opps.map((o) => o.contactId),
+    ]);
+    const report = buildReport(start, end, contacts, opps, appts, extraContacts);
     await setCachedReport(start, end, report);
     await writeAudit(req.user!.id, "report.computed", { start, end, contacts: contacts.length, opps: opps.length });
     res.json(report);
@@ -41,8 +62,16 @@ reports.post("/snapshot", async (req: AuthedRequest, res, next) => {
     const parsed = ReportQuerySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "bad_body" });
     const { start, end } = parsed.data;
-    const [contacts, opps] = await Promise.all([fetchContactsInRange(start, end), fetchOppsInRange(start, end)]);
-    const report = buildReport(start, end, contacts, opps);
+    const [contacts, opps, appts] = await Promise.all([
+      fetchContactsInRange(start, end),
+      fetchOppsInRange(start, end),
+      fetchAppointmentsInRange(start, end),
+    ]);
+    const extraContacts = await fetchMissingContacts(contacts, [
+      ...appts.map((a) => a.contactId),
+      ...opps.map((o) => o.contactId),
+    ]);
+    const report = buildReport(start, end, contacts, opps, appts, extraContacts);
     const id = await saveSnapshot(req.user!.id, start, end, report);
     await writeAudit(req.user!.id, "report.snapshot", { id, start, end });
     res.json({ id });
@@ -51,24 +80,25 @@ reports.post("/snapshot", async (req: AuthedRequest, res, next) => {
   }
 });
 
+/** GET /api/reports/snapshot/:id — retorna um snapshot salvo do user logado. */
+reports.get("/snapshot/:id", async (req: AuthedRequest, res, next) => {
+  try {
+    const parsed = z.string().uuid().safeParse(req.params.id);
+    if (!parsed.success) return res.status(400).json({ error: "bad_id" });
+    const snap = await getSnapshot(req.user!.id, parsed.data);
+    if (!snap) return res.status(404).json({ error: "not_found" });
+    await writeAudit(req.user!.id, "report.snapshot.viewed", { id: parsed.data });
+    res.json({ snapshot: snap });
+  } catch (e) {
+    next(e);
+  }
+});
+
 /** GET /api/reports/snapshots — lista snapshots do user logado. */
 reports.get("/snapshots", async (req: AuthedRequest, res, next) => {
   try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const { env } = await import("../env.js");
-    const token = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
-    const sb = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-    const { data, error } = await sb
-      .from("report_snapshots")
-      .select("id, period_start, period_end, created_at, note")
-      .eq("user_id", req.user!.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ snapshots: data });
+    const snapshots = await listSnapshots(req.user!.id);
+    res.json({ snapshots });
   } catch (e) {
     next(e);
   }

@@ -75,14 +75,16 @@ export function classifyPlatform(contact: GhlContact): AdsPlatform {
   // TikTok Ads
   if (/\b(?:tiktok|tt)\b/.test(combined)) return "tiktok";
 
-  // Último fallback: attributionSource.session.medium (campo nativo do GHL).
-  // Pode vir como "paid_social", "paid_search", "organic_social", "direct", etc.
-  const attrMed = (contact.attributionSource?.session?.medium || "").toLowerCase().trim();
-  if (attrMed) {
-    if (/(paid_social|social_paid|paid-social|fb|ig|meta|facebook|instagram)/.test(attrMed)) return "facebook";
-    if (/(paid_search|search_paid|cpc|google|adwords)/.test(attrMed)) return "google";
-    if (/(tiktok|tt)/.test(attrMed)) return "tiktok";
-    // orgânico / direto / referral — não-ads
+  // Último fallback: attributionSource nativo do GHL — shape FLAT no /contacts/search
+  // (sessionSource: "Paid Social" | "Paid Search" | "Social media" | "CRM UI" | ...).
+  const att = contact.attributionSource;
+  if (att?.gclid) return "google";
+  const attrCombined = `${att?.sessionSource ?? ""} ${att?.medium ?? ""}`.toLowerCase().trim();
+  if (attrCombined) {
+    if (/(paid social|paid_social|social_paid|paid-social|\bfb\b|\big\b|meta|facebook|instagram)/.test(attrCombined)) return "facebook";
+    if (/(paid search|paid_search|search_paid|cpc|google|adwords)/.test(attrCombined)) return "google";
+    if (/(tiktok|\btt\b)/.test(attrCombined)) return "tiktok";
+    // orgânico / direto / referral / CRM UI — não-ads
     return "organico";
   }
 

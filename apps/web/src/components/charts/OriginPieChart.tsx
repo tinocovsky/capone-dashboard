@@ -10,7 +10,7 @@ const PIE_COLORS = [
   COLORS.accent2,
   COLORS.green,
   COLORS.yellow,
-  "var(--line)",
+  COLORS.red,
 ];
 
 export function OriginPieChart({ rows, limit = 6 }: { rows: Row[]; limit?: number }) {

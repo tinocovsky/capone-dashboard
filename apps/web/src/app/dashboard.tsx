@@ -1,34 +1,23 @@
 "use client";
-import { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import type { Report } from "@capone/shared";
+import type { ArtistBySource, ContactsByDaySource, Report } from "@capone/shared";
 import { supabaseBrowser, authedFetch } from "@/lib/supabase-browser";
 import { exportPdf, exportCsv, shareLink } from "@/lib/export";
-
-const fmtBRL = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
-
-const PIPELINE_LABEL: Record<string, string> = {
-  // Mapeamento real do GHL (location C8d1LN8IL9XdN9kDkaF9)
-  pO2K0v6YDMGFF6SIRjfD: "Vendas",
-  BeT55Wi2a64zC0YcSKBG: "Pós vendas",
-  // Não exibir (fora do dashboard)
-  VCgD6NrveofKH6dz8GZJ: "Prospecção (reativação)",
-  FGsQB2sid3AEl3OdZYjG: "Barbearia",
-};
+import { fmtBRL, fmtPct, fmtCycle, fmtPeriod, fmtDateBR } from "@/lib/format";
+import { SnapshotsPanel, type SnapshotMeta } from "@/components/SnapshotsPanel";
 
 // Charts são client-only (Recharts usa window/DOM). Carregamento dinâmico para não quebrar SSR.
 const ContactsByDayChart = dynamic(
   () => import("@/components/charts/ContactsByDayChart").then((m) => m.ContactsByDayChart),
   { ssr: false, loading: () => <div style={{ height: 140 }} /> },
 );
-const VendasFunnelChart = dynamic(
-  () => import("@/components/charts/VendasFunnelChart").then((m) => m.VendasFunnelChart),
+const ContactsByOriginCard = dynamic(
+  () => import("@/components/charts/ContactsByOriginCard").then((m) => m.ContactsByOriginCard),
   { ssr: false, loading: () => <div style={{ height: 280 }} /> },
 );
-const ArtistRevenueChart = dynamic(
-  () => import("@/components/charts/ArtistRevenueChart").then((m) => m.ArtistRevenueChart),
+const ArtistPerformanceChart = dynamic(
+  () => import("@/components/charts/ArtistRevenueChart").then((m) => m.ArtistPerformanceChart),
   { ssr: false, loading: () => <div style={{ height: 220 }} /> },
 );
 const OriginPieChart = dynamic(
@@ -39,13 +28,17 @@ const OriginLegend = dynamic(
   () => import("@/components/charts/OriginPieChart").then((m) => m.OriginLegend),
   { ssr: false },
 );
-const RevenueAreaChart = dynamic(
-  () => import("@/components/charts/RevenueAreaChart").then((m) => m.RevenueAreaChart),
-  { ssr: false, loading: () => <div style={{ height: 220 }} /> },
-);
 const OriginBars = dynamic(
   () => import("@/components/charts/OriginBars").then((m) => m.OriginBars),
   { ssr: false, loading: () => <div style={{ height: 220 }} /> },
+);
+const ArtistSourceChart = dynamic(
+  () => import("@/components/charts/ArtistSourceChart").then((m) => m.ArtistSourceChart),
+  { ssr: false, loading: () => <div style={{ height: 220 }} /> },
+);
+const AppointmentsPieChart = dynamic(
+  () => import("@/components/charts/AppointmentsPieChart").then((m) => m.AppointmentsPieChart),
+  { ssr: false, loading: () => <div style={{ height: 120 }} /> },
 );
 
 // Cores das plataformas de ads (CSS vars do tema)
@@ -57,18 +50,40 @@ const ADS_PLATFORMS = [
   { key: "outros",   label: "Outros", color: "var(--muted)", note: "utm de origens não-ads" },
 ] as const;
 
+const ALERT_PILL: Record<string, { cls: string; label: string }> = {
+  info: { cls: "pill-ok", label: "info" },
+  warn: { cls: "pill-warn", label: "atenção" },
+  bad: { cls: "pill-bad", label: "crítico" },
+};
+
 function rateClass(rate: number) {
   if (rate >= 0.6) return "green";
   if (rate >= 0.3) return "yellow";
   return "red";
 }
 
-function ReportTable({ rows }: { rows: { label: string; count: number; percent: number }[] }) {
+/** Data local em YYYY-MM-DD (sem o desvio de fuso do toISOString). */
+function localISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Cache/snapshots antigos podem ter o shape pré-SDR (byCloser/closersNoMes). */
+function normalizeReport(raw: Report): Report {
+  const legacy = raw as Report & { byCloser?: Report["bySdr"] };
+  const totals = raw.totals as Report["totals"] & { closersNoMes?: number };
+  return {
+    ...raw,
+    bySdr: raw.bySdr ?? legacy.byCloser ?? [],
+    totals: { ...totals, sdrsNoMes: totals.sdrsNoMes ?? totals.closersNoMes ?? 0 },
+  };
+}
+
+function ReportTable({ rows, labelHeader = "Categoria" }: { rows: { label: string; count: number; percent: number }[]; labelHeader?: string }) {
   if (!rows.length) return <div className="note">Sem dados no período.</div>;
   return (
     <table>
       <thead>
-        <tr><th>Categoria</th><th className="num">Contatos</th><th className="num">% do mês</th></tr>
+        <tr><th>{labelHeader}</th><th className="num">Contatos</th><th className="num">% do período</th></tr>
       </thead>
       <tbody>
         {rows.map((r) => (
@@ -79,7 +94,90 @@ function ReportTable({ rows }: { rows: { label: string; count: number; percent: 
   );
 }
 
+/** Tabela de contatos por dia: uma coluna por origem (sessionSource), total e % do período. */
+function DaySourceTable({ data, totalContacts }: { data: ContactsByDaySource; totalContacts: number }) {
+  if (!data.rows.length) return <div className="note">Sem dados no período.</div>;
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          {data.sources.map((s) => <th key={s} className="num">{s}</th>)}
+          <th className="num">Total</th>
+          <th className="num">% do período</th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.rows.map((r) => (
+          <tr key={r.date}>
+            <td>{fmtDateBR(r.date)}</td>
+            {data.sources.map((s) => (
+              <td key={s} className="num" style={{ color: (r.bySource[s] ?? 0) === 0 ? "var(--muted)" : undefined }}>
+                {r.bySource[s] ?? 0}
+              </td>
+            ))}
+            <td className="num"><strong>{r.total}</strong></td>
+            <td className="num">{totalContacts ? ((r.total / totalContacts) * 100).toFixed(1) : "0.0"}%</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** Tabela cruzada artista × origem: 4 colunas (total/conv/não conv/%) por origem. */
+function ArtistSourceTable({ data }: { data: ArtistBySource }) {
+  if (!data.rows.length) return <div className="note">Sem dados no período.</div>;
+  const empty = { total: 0, convertidos: 0, naoConvertidos: 0, taxaConversao: 0 };
+  return (
+    <div className="scroll-x">
+      <table>
+        <thead>
+          <tr>
+            <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Artista</th>
+            {data.sources.map((s) => (
+              <th key={s} colSpan={4} className="num" style={{ borderLeft: "1px solid var(--line)", textAlign: "center" }}>{s}</th>
+            ))}
+          </tr>
+          <tr>
+            {data.sources.map((s) => (
+              <React.Fragment key={s}>
+                <th className="num" style={{ borderLeft: "1px solid var(--line)" }}>Total</th>
+                <th className="num">Conv</th>
+                <th className="num">Não conv</th>
+                <th className="num">% conv</th>
+              </React.Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.rows.map((r) => (
+            <tr key={r.artist}>
+              <td><strong>{r.artist}</strong></td>
+              {data.sources.map((s) => {
+                const c = r.bySource[s] ?? empty;
+                const mute = c.total === 0;
+                return (
+                  <React.Fragment key={s}>
+                    <td className="num" style={{ borderLeft: "1px solid var(--line)", color: mute ? "var(--muted)" : undefined }}>{c.total}</td>
+                    <td className="num" style={{ color: mute ? "var(--muted)" : "var(--green)" }}>{c.convertidos}</td>
+                    <td className="num" style={{ color: mute ? "var(--muted)" : "var(--red)" }}>{c.naoConvertidos}</td>
+                    <td className={`num ${mute ? "" : rateClass(c.taxaConversao)}`} style={{ color: mute ? "var(--muted)" : undefined }}>
+                      {mute ? "—" : fmtPct(c.taxaConversao)}
+                    </td>
+                  </React.Fragment>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PerformanceTable({ rows }: { rows: { label: string; total: number; convertidos: number; naoConvertidos: number; taxaConversao: number; ticketMedio: number; receitaConvertida: number }[] }) {
+  if (!rows.length) return <div className="note">Sem dados no período.</div>;
   return (
     <table>
       <thead>
@@ -106,32 +204,98 @@ function PerformanceTable({ rows }: { rows: { label: string; total: number; conv
   );
 }
 
-export default function Dashboard({ user }: { user: { id: string; email: string } }) {
+export default function Dashboard({
+  user,
+  initialStart,
+  initialEnd,
+}: {
+  user: { id: string; email: string };
+  initialStart?: string;
+  initialEnd?: string;
+}) {
   const [report, setReport] = useState<Report | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const today = new Date();
-  const first = new Date(today.getFullYear(), today.getMonth(), 1);
-  const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  const [start, setStart] = useState(first.toISOString().slice(0, 10));
-  const [end, setEnd] = useState(last.toISOString().slice(0, 10));
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [showSnapshots, setShowSnapshots] = useState(false);
+  const [snapshotsVersion, setSnapshotsVersion] = useState(0);
+  const [viewingSnapshot, setViewingSnapshot] = useState<SnapshotMeta | null>(null);
 
-  async function load(opts: { force?: boolean } = {}) {
-    setLoading(true); setErr(null);
-    const { data: sess } = await supabaseBrowser().auth.getSession();
-    const r = await authedFetch(
-      `${process.env.NEXT_PUBLIC_API_BASE}/api/reports?start=${start}&end=${end}${opts.force ? "&forceRefresh=1" : ""}`,
-      {},
-      sess.session,
-    );
-    if (!r.ok) {
-      setErr(`API ${r.status}: ${await r.text()}`);
-      setLoading(false);
+  const today = new Date();
+  const [start, setStart] = useState(
+    initialStart ?? localISO(new Date(today.getFullYear(), today.getMonth(), 1)),
+  );
+  const [end, setEnd] = useState(
+    initialEnd ?? localISO(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+  );
+
+  // Mensagens de sucesso somem sozinhas
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(null), 4000);
+    return () => clearTimeout(t);
+  }, [msg]);
+
+  const load = useCallback(
+    async (opts: { force?: boolean } = {}) => {
+      setLoading(true);
+      setErr(null);
+      try {
+        const { data: sess } = await supabaseBrowser().auth.getSession();
+        const r = await authedFetch(
+          `${process.env.NEXT_PUBLIC_API_BASE}/api/reports?start=${start}&end=${end}${opts.force ? "&forceRefresh=1" : ""}`,
+          {},
+          sess.session,
+        );
+        if (!r.ok) {
+          setErr(`API ${r.status}: ${await r.text()}`);
+          return;
+        }
+        setReport(normalizeReport(await r.json()));
+      } catch (e) {
+        setErr(`Falha de rede: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [start, end],
+  );
+
+  // Período invertido é derivado no render (aviso) e bloqueia o auto-reload.
+  const periodInvalid = start > end;
+
+  // Carrega no mount imediatamente; mudanças de período recarregam com debounce.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (viewingSnapshot || periodInvalid) return; // snapshot congelado / datas invertidas
+    if (firstRun.current) {
+      firstRun.current = false;
+      void load();
       return;
     }
-    setReport(await r.json());
-    setLoading(false);
+    const t = setTimeout(() => void load(), 600);
+    return () => clearTimeout(t);
+  }, [load, viewingSnapshot, periodInvalid]);
+
+  function setPeriod(s: Date, e: Date) {
+    setStart(localISO(s));
+    setEnd(localISO(e));
   }
+  const presets = [
+    {
+      label: "Este mês",
+      apply: () => setPeriod(new Date(today.getFullYear(), today.getMonth(), 1), new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+    },
+    {
+      label: "Mês passado",
+      apply: () => setPeriod(new Date(today.getFullYear(), today.getMonth() - 1, 1), new Date(today.getFullYear(), today.getMonth(), 0)),
+    },
+    {
+      label: "Últimos 30 dias",
+      apply: () => setPeriod(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29), today),
+    },
+  ];
 
   async function snapshot() {
     const { data: sess } = await supabaseBrowser().auth.getSession();
@@ -142,8 +306,50 @@ export default function Dashboard({ user }: { user: { id: string; email: string 
     );
     if (r.ok) {
       const { id } = await r.json();
-      setErr(`OK Snapshot salvo (${id.slice(0, 8)}...)`);
-    } else setErr(`Falha: ${r.status} ${await r.text()}`);
+      setMsg(`Snapshot salvo (${id.slice(0, 8)}…)`);
+      setSnapshotsVersion((v) => v + 1); // painel aberto recarrega a lista
+    } else setErr(`Falha ao salvar snapshot: ${r.status} ${await r.text()}`);
+  }
+
+  async function openSnapshot(s: SnapshotMeta) {
+    setLoading(true);
+    setErr(null);
+    try {
+      const { data: sess } = await supabaseBrowser().auth.getSession();
+      const r = await authedFetch(
+        `${process.env.NEXT_PUBLIC_API_BASE}/api/reports/snapshot/${s.id}`,
+        {},
+        sess.session,
+      );
+      if (!r.ok) {
+        setErr(`Falha ao abrir snapshot: ${r.status}`);
+        return;
+      }
+      const { snapshot } = await r.json();
+      setReport(normalizeReport(snapshot.report));
+      setStart(snapshot.period_start);
+      setEnd(snapshot.period_end);
+      setViewingSnapshot(s);
+      setShowSnapshots(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function backToLive() {
+    setViewingSnapshot(null); // effect recarrega o período atual
+  }
+
+  async function exportPdfClick() {
+    if (!report || exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      await exportPdf("dashboard-root", report);
+    } catch (e) {
+      setErr(`Erro ao gerar PDF: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   async function logout() {
@@ -151,65 +357,34 @@ export default function Dashboard({ user }: { user: { id: string; email: string 
     location.href = "/login";
   }
 
-  useEffect(() => {
-    // Wrapper async pra evitar set-state síncrono no effect (regra react-hooks/set-state-in-effect).
-    // O ideal seria reagir a `[start, end]`, mas o `load()` depende de auth que só fica
-    // disponível client-side. Carregamos 1x no mount; mudanças de período usam o botão "Atualizar".
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setErr(null);
-      const { data: sess } = await supabaseBrowser().auth.getSession();
-      const r = await authedFetch(
-        `${process.env.NEXT_PUBLIC_API_BASE}/api/reports?start=${start}&end=${end}`,
-        {},
-        sess.session,
-      );
-      if (cancelled) return;
-      if (!r.ok) {
-        setErr(`API ${r.status}: ${await r.text()}`);
-      } else {
-        setReport(await r.json());
-      }
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
-    // start/end são deps mas só no mount queremos disparar — ver comentário acima.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const frozen = viewingSnapshot !== null;
 
   return (
     <div className="wrap" id="dashboard-root">
-      <h1>Dashboard GHL — {start.slice(0, 4)}/{start.slice(5, 7)}</h1>
+      <h1>Dashboard GHL — {fmtPeriod(start, end)}</h1>
       <div className="sub">Capone Club • {user.email}</div>
 
       <div className="toolbar no-export" style={{ marginTop: 12 }}>
-        <label className="sub">Início <input type="date" value={start} onChange={(e) => setStart(e.target.value)} style={{ marginLeft: 4, padding: 4, background: "var(--panel)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 6 }} /></label>
-        <label className="sub">Fim <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} style={{ marginLeft: 4, padding: 4, background: "var(--panel)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 6 }} /></label>
-        <button className="pill-btn" onClick={() => load()} disabled={loading}>{loading ? "Carregando..." : "Atualizar"}</button>
-        <button className="pill-btn" onClick={() => load({ force: true })} disabled={loading}>Forçar refresh</button>
-        <button className="pill-btn" onClick={snapshot} disabled={!report}>Salvar snapshot</button>
+        <label className="sub" htmlFor="dt-start">Início <input id="dt-start" type="date" value={start} disabled={frozen} onChange={(e) => setStart(e.target.value)} style={{ marginLeft: 4, padding: 4, background: "var(--panel)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+        <label className="sub" htmlFor="dt-end">Fim <input id="dt-end" type="date" value={end} disabled={frozen} onChange={(e) => setEnd(e.target.value)} style={{ marginLeft: 4, padding: 4, background: "var(--panel)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+        {presets.map((p) => (
+          <button key={p.label} className="pill-btn" onClick={p.apply} disabled={loading || frozen}>{p.label}</button>
+        ))}
+        <button className="pill-btn" onClick={() => load()} disabled={loading || frozen}>{loading ? "Carregando…" : "Atualizar"}</button>
+        <button className="pill-btn" onClick={() => load({ force: true })} disabled={loading || frozen}>Forçar refresh</button>
+        <button className="pill-btn" onClick={snapshot} disabled={!report || frozen}>Salvar snapshot</button>
+        <button className="pill-btn" onClick={() => setShowSnapshots((v) => !v)}>
+          {showSnapshots ? "Fechar snapshots" : "Snapshots"}
+        </button>
         <button className="pill-btn" onClick={() => report && exportCsv(report)} disabled={!report}>Exportar CSV</button>
-        <button
-          className="pill-btn"
-          onClick={async () => {
-            if (!report) return;
-            const btn = document.getElementById("btn-export-pdf") as HTMLButtonElement | null;
-            if (btn) { btn.disabled = true; btn.textContent = "Gerando PDF..."; }
-            try { await exportPdf("dashboard-root", report); }
-            catch (e) { setErr(`Erro ao gerar PDF: ${e instanceof Error ? e.message : String(e)}`); }
-            finally { if (btn) { btn.disabled = false; btn.textContent = "Exportar PDF"; } }
-          }}
-          disabled={!report}
-          id="btn-export-pdf"
-        >
-          Exportar PDF
+        <button className="pill-btn" onClick={exportPdfClick} disabled={!report || exportingPdf}>
+          {exportingPdf ? "Gerando PDF…" : "Exportar PDF"}
         </button>
         <button
           className="pill-btn"
           onClick={async () => {
             await shareLink({ start, end });
-            setErr("Link do período copiado pro clipboard.");
+            setMsg("Link do período copiado para o clipboard.");
           }}
         >
           Compartilhar link
@@ -217,7 +392,27 @@ export default function Dashboard({ user }: { user: { id: string; email: string 
         <button className="pill-btn" onClick={logout} style={{ marginLeft: "auto" }}>Sair</button>
       </div>
 
-      {err && <div className="note" style={{ marginTop: 8 }}>{err}</div>}
+      {frozen && viewingSnapshot && (
+        <div className="note no-export" style={{ marginTop: 8, borderLeftColor: "var(--yellow)" }}>
+          <strong>Visualizando snapshot</strong> salvo em {new Date(viewingSnapshot.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} ({fmtPeriod(viewingSnapshot.period_start, viewingSnapshot.period_end)}).{" "}
+          <button className="pill-btn" onClick={backToLive} style={{ marginLeft: 8 }}>Voltar ao ao vivo</button>
+        </div>
+      )}
+
+      {showSnapshots && (
+        <div className="no-export">
+          <SnapshotsPanel key={snapshotsVersion} onSelect={openSnapshot} onError={setErr} />
+        </div>
+      )}
+
+      {periodInvalid && (
+        <div className="note no-export" style={{ marginTop: 8, borderLeftColor: "var(--yellow)", color: "var(--yellow)" }}>
+          Período inválido: a data inicial é posterior à final.
+        </div>
+      )}
+      {err && <div className="note no-export" style={{ marginTop: 8, borderLeftColor: "var(--red)", color: "var(--red)" }}>{err}</div>}
+      {msg && <div className="note no-export" style={{ marginTop: 8, borderLeftColor: "var(--green)", color: "var(--green)" }}>{msg}</div>}
+      {loading && !report && <div className="note" style={{ marginTop: 8 }}>Carregando relatório…</div>}
 
       {report && (
         <>
@@ -271,16 +466,35 @@ export default function Dashboard({ user }: { user: { id: string; email: string 
                 <div className="hero-kpi">
                   <div className="accent-bar" />
                   <div className="label">Cycle time</div>
-                  <div className="val">{report.totals.cycleTimeMedianaDias.toFixed(1)}d</div>
+                  <div className="val">{fmtCycle(report.totals.cycleTimeMedianaDias)}</div>
                   <div className="sub">mediana de fechamento</div>
                 </div>
+                {/* 6. Agendamentos — status + origem (calendários GHL) */}
+                {report.appointments && (
+                  <div className="hero-kpi wide">
+                    <div className="accent-bar" style={{ background: "var(--accent-2)" }} />
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
+                      <div className="label">Agendamentos</div>
+                      <div className="val" style={{ fontSize: 24, marginTop: 0 }}>{report.appointments.total}</div>
+                      <div className="sub" style={{ marginTop: 0 }}>no período</div>
+                    </div>
+                    <AppointmentsPieChart data={report.appointments} />
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Lado direito: funil compacto (mesmo funil da seção 4, mas
-                num card dedicado do hero) */}
-            <div>
-              {report.vendasFunnel && <VendasFunnelChart stages={report.vendasFunnel} />}
+            {/* Lado direito: contatos por origem no período — prioridade no hero
+                (substitui o funil de vendas, removido daqui). */}
+            <div className="hero-kpi" style={{ height: "100%" }}>
+              <div className="accent-bar" style={{ background: "var(--accent-2)" }} />
+              <div className="label">Contatos por Origem</div>
+              <div className="sub" style={{ marginBottom: 12 }}>{report.totals.novosContatos.toLocaleString("pt-BR")} no período</div>
+              {report.contactsByDaySource ? (
+                <ContactsByOriginCard data={report.contactsByDaySource} total={report.totals.novosContatos} />
+              ) : (
+                <div className="note">Disponível após recalcular o relatório (clique em &quot;Forçar refresh&quot;).</div>
+              )}
             </div>
           </div>
 
@@ -334,101 +548,92 @@ export default function Dashboard({ user }: { user: { id: string; email: string 
           )}
 
           {/* ========================================================================
-              Seções 1-9 originais (mantidas)
+              Seções numeradas
               ========================================================================= */}
-          <h2>1. Performance Detalhada (visão antiga)</h2>
-          <div className="grid cards">
-            <div className="card"><div className="label">Novos contatos</div><div className="val">{report.totals.novosContatos.toLocaleString("pt-BR")}</div><div className="sub">{report.totals.oportunidades} viraram oportunidade</div></div>
-            <div className="card"><div className="label">Oportunidades</div><div className="val">{report.totals.oportunidades}</div><div className="sub">{report.totals.convertidas} convertidas • {report.totals.naoConvertidas} não convertidas</div></div>
-            <div className="card"><div className="label">Taxa de conversão</div><div className={`val ${rateClass(report.totals.taxaConversao)}`}>{fmtPct(report.totals.taxaConversao)}</div><div className="sub">convertidos / decididos</div></div>
-            <div className="card"><div className="label">Receita convertida</div><div className="val green">{fmtBRL(report.totals.receitaConvertida)}</div><div className="sub">ticket médio {fmtBRL(report.totals.ticketMedio)}</div></div>
-          </div>
-          <div className="grid cards-3" style={{ marginTop: 16 }}>
-            <div className="card"><div className="label">Cycle time (convertidos)</div><div className="val">{report.totals.cycleTimeMedianaDias.toFixed(1)}d</div><div className="sub">mediana</div></div>
-            <div className="card"><div className="label">Artistas no mês</div><div className="val">{report.totals.artistasNoMes}</div><div className="sub">com pelo menos 1 lead decidido</div></div>
-            <div className="card"><div className="label">Closers no mês</div><div className="val">{report.totals.closersNoMes}</div></div>
-          </div>
+          <h2>1. Performance por Origem (macro)</h2>
+          <PerformanceTable rows={report.byOrigin} />
 
-          <h2>2. Novos Contatos</h2>
-          <h3>2.1 Novos contatos por dia</h3>
-          <ContactsByDayChart rows={report.contactsByDay} total={report.totals.novosContatos} />
-          <ReportTable rows={report.contactsByDay} />
+          <h2>2. Performance por Artista</h2>
+          <div className="note">Todos os artistas ativos no período (ao menos 1 lead decidido), ordenados por total vendido. Dois painéis com as mesmas linhas: à esquerda o <span style={{ color: "var(--cyan)" }}>total vendido</span> (escala R$); à direita os leads decididos (<span style={{ color: "var(--green)" }}>convertidos</span> + <span style={{ color: "var(--red)" }}>não convertidos</span> empilhados), com o % de conversão na ponta.</div>
+          {report.byArtist.length > 0 && <ArtistPerformanceChart rows={report.byArtist} />}
+          <PerformanceTable rows={report.byArtist} />
 
-          <h3>2.2 Por origem (sessão) — top 6 visualizado em pizza</h3>
+          <h3>2.1 Artista × grupo de clientes</h3>
+          <div className="note">
+            <strong>Clientes Capone</strong> = leads com session source válido (Paid Social, Social media, etc.) ou com &quot;Fonte do negócio&quot; ≠ Artistas.{" "}
+            <strong>Clientes dos Artistas</strong> = leads sem source (ou CRM UI) cuja oportunidade tem &quot;Fonte do negócio&quot; = Artistas.
+            {(report.byArtistSource?.naoClassificados ?? 0) > 0 && (
+              <> {report.byArtistSource!.naoClassificados} lead(s) sem source e sem fonte caíram no default (Capone).</>
+            )}
+          </div>
+          {report.byArtistSource ? (
+            <>
+              <ArtistSourceTable data={report.byArtistSource} />
+              <div className="note" style={{ marginTop: 12 }}>Mix por artista — cada segmento é o total de leads do grupo.</div>
+              <ArtistSourceChart data={report.byArtistSource} />
+            </>
+          ) : (
+            <div className="note">Disponível após recalcular o relatório (clique em &quot;Forçar refresh&quot;).</div>
+          )}
+
+          <h2>3. Novos Contatos</h2>
+          <h3>3.1 Novos contatos por dia — segregado por origem da sessão</h3>
+          {report.contactsByDaySource ? (
+            <>
+              <ContactsByDayChart data={report.contactsByDaySource} />
+              <DaySourceTable data={report.contactsByDaySource} totalContacts={report.totals.novosContatos} />
+            </>
+          ) : (
+            // snapshots antigos não têm a segregação por origem
+            <ReportTable labelHeader="Data" rows={report.contactsByDay.map((r) => ({ ...r, label: fmtDateBR(r.label) }))} />
+          )}
+
+          <h3>3.2 Por origem (sessão) — top 6 visualizado em pizza</h3>
           <div className="row-2">
             <OriginPieChart rows={report.contactsBySourceSession} />
             <div style={{ alignSelf: "center" }}>
               <OriginLegend rows={report.contactsBySourceSession} />
             </div>
           </div>
-          <h3>2.3 Por canal (meio)</h3>
+          <h3>3.3 Por canal (meio)</h3>
           <ReportTable rows={report.contactsByChannel} />
-          <h3>2.4 Cruzamento Sessão × Meio (top 10)</h3>
+          <h3>3.4 Cruzamento Sessão × Meio (top 10)</h3>
           <ReportTable rows={report.sessionXChannel} />
-          <h3>2.5 Landing pages (top 10)</h3>
+          <h3>3.5 Landing pages (top 10)</h3>
           <table>
             <thead><tr><th>Landing Page</th><th className="num">Visitas (contatos)</th></tr></thead>
             <tbody>{report.topLandingPages.map((r) => <tr key={r.label}><td className="url-cell">{r.label}</td><td className="num">{r.count}</td></tr>)}</tbody>
           </table>
-          <h3>2.6 Ad IDs (top 10)</h3>
+          <h3>3.6 Ad IDs (top 10)</h3>
           <table>
             <thead><tr><th>Ad ID</th><th className="num">Contatos</th></tr></thead>
             <tbody>{report.topAdIds.map((r) => <tr key={r.label}><td className="url-cell">{r.label}</td><td className="num">{r.count}</td></tr>)}</tbody>
           </table>
-          <h3>2.7 Source legado (top 10)</h3>
+          <h3>3.7 Source legado (top 10)</h3>
           <ReportTable rows={report.topLegacySources} />
-          <h3>2.8 Tags principais</h3>
-          <ReportTable rows={report.topTags} />
 
-          <h2>3. Performance por Pipeline</h2>
-          <table>
-            <thead>
-              <tr><th>Pipeline</th><th className="num">Total</th><th className="num">Convertidos</th>
-                <th className="num">Não convertidos</th><th className="num">Conversão</th><th className="num">Receita convertida</th></tr>
-            </thead>
-            <tbody>
-              {report.pipelineBreakdown.map((p) => (
-                <tr key={p.pipeline}>
-                  <td><strong>{PIPELINE_LABEL[p.pipeline] ?? p.pipeline}</strong></td>
-                  <td className="num">{p.total}</td><td className="num">{p.convertidos}</td>
-                  <td className="num">{p.naoConvertidos}</td>
-                  <td className={`num ${rateClass(p.taxaConversao)}`}>{fmtPct(p.taxaConversao)}</td>
-                  <td className="num">{fmtBRL(p.receitaConvertida)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h2>4. Performance por SDR</h2>
+          <div className="note">SDR = campo <strong>&quot;Dono do negócio&quot;</strong> da oportunidade no GHL.</div>
+          <PerformanceTable rows={report.bySdr} />
 
-          <h2>4. Funil de Vendas (junho)</h2>
-          <div className="note">Cada barra mostra quantas oportunidades estão em cada estágio. Cor: <span style={{ color: "var(--green)" }}>verde</span> = 90%+ de conversão, <span style={{ color: "var(--yellow)" }}>amarelo</span> = 50-90%, <span style={{ color: "var(--red)" }}>vermelho</span> = menos de 50%.</div>
-          {report.vendasFunnel && <VendasFunnelChart stages={report.vendasFunnel} />}
-
-          <h2>5. Receita acumulada do mês</h2>
-          <div className="note">Curva de receita convertida acumulada dia a dia — mostra o ritmo de fechamento do mês.</div>
-          {report.revenueByDay && <RevenueAreaChart rows={report.revenueByDay} />}
-
-          <h2>6. Performance por Artista (top 12 por receita)</h2>
-          {report.byArtist.length > 0 && <ArtistRevenueChart rows={report.byArtist} />}
-          <PerformanceTable rows={report.byArtist} />
-
-          <h2>6. Performance por Closer</h2>
-          <PerformanceTable rows={report.byCloser} />
-
-          <h2>7. Performance por Origem (macro)</h2>
-          <PerformanceTable rows={report.byOrigin} />
-
-          <h2>8. Alertas e Observações</h2>
+          <h2>5. Alertas e Observações</h2>
           <div className="callout">
             <ul className="tight">
-              {report.alerts.map((a, i) => (
-                <li key={i}><strong>{a.title}:</strong> {a.message}</li>
-              ))}
+              {report.alerts.map((a, i) => {
+                const pill = ALERT_PILL[a.severity] ?? ALERT_PILL.info;
+                return (
+                  <li key={i}>
+                    <span className={`pill ${pill.cls}`} style={{ marginRight: 8 }}>{pill.label}</span>
+                    <strong>{a.title}:</strong> {a.message}
+                  </li>
+                );
+              })}
               {report.alerts.length === 0 && <li>Sem alertas críticos no período.</li>}
             </ul>
           </div>
 
           <div className="footer">
-            {report.cacheHit ? `Cache (${report.cacheAgeSeconds}s atras)` : "Recem-calculado"} • {report.totals.novosContatos} contatos • {report.totals.oportunidades} opps • {report.totals.convertidas} convertidas • {fmtBRL(report.totals.receitaConvertida)} receita
+            {report.cacheHit ? `Cache (${report.cacheAgeSeconds}s atrás)` : "Recém-calculado"} • {report.totals.novosContatos} contatos • {report.totals.oportunidades} opps • {report.totals.convertidas} convertidas • {fmtBRL(report.totals.receitaConvertida)} receita
           </div>
         </>
       )}

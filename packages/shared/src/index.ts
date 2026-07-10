@@ -26,21 +26,38 @@ export const GhlContactSchema = z.object({
     )
     .optional()
     .default([]),
+  // ⚠️ No /contacts/search o attributionSource é FLAT (validado jul/2026):
+  // { sessionSource: "Paid Social" | "Social media" | "CRM UI" | ...,
+  //   medium, url, adId, adName, gclid, campaign, ... } — NÃO existe "session" aninhado.
   attributionSource: z
     .object({
-      session: z
-        .object({
-          medium: z.string().optional().nullable(),
-          url: z.string().optional().nullable(),
-          adId: z.string().optional().nullable(),
-        })
-        .optional()
-        .nullable(),
+      sessionSource: z.string().optional().nullable(),
+      medium: z.string().optional().nullable(),
+      url: z.string().optional().nullable(),
+      adId: z.string().optional().nullable(),
+      adName: z.string().optional().nullable(),
+      gclid: z.string().optional().nullable(),
     })
+    .passthrough()
     .optional()
     .nullable(),
 });
 export type GhlContact = z.infer<typeof GhlContactSchema>;
+
+export const GhlAppointmentSchema = z.object({
+  id: z.string(),
+  calendarId: z.string().optional().nullable(),
+  contactId: z.string().optional().nullable(),
+  // "confirmed" | "showed" | "noshow" | "cancelled" | "new" | "invalid"
+  appointmentStatus: z.string().optional().nullable(),
+  // "yyyy-MM-dd HH:mm:ss" (sem timezone) no /calendars/events
+  startTime: z.string().optional().nullable(),
+  dateAdded: z.string().optional().nullable(),
+  title: z.string().optional().nullable(),
+  // origem do agendamento: "calendar_page" | "conversations_ai" | "manual" | ...
+  createdBy: z.object({ source: z.string().optional().nullable() }).passthrough().optional().nullable(),
+});
+export type GhlAppointment = z.infer<typeof GhlAppointmentSchema>;
 
 export const GhlOpportunitySchema = z.object({
   id: z.string(),
@@ -72,7 +89,7 @@ export const TotalsSchema = z.object({
   ticketMedio: z.number(),
   cycleTimeMedianaDias: z.number(),
   artistasNoMes: z.number(),
-  closersNoMes: z.number(),
+  sdrsNoMes: z.number(),
 });
 export type Totals = z.infer<typeof TotalsSchema>;
 
@@ -82,6 +99,20 @@ export const CountRowSchema = z.object({
   percent: z.number(),
 });
 export type CountRow = z.infer<typeof CountRowSchema>;
+
+// Contatos por dia segregados por sessionSource ("UTM Session Source" na UI do GHL)
+export const DaySourceRowSchema = z.object({
+  date: z.string(),                       // YYYY-MM-DD
+  total: z.number(),
+  bySource: z.record(z.string(), z.number()),
+});
+export type DaySourceRow = z.infer<typeof DaySourceRowSchema>;
+
+export const ContactsByDaySourceSchema = z.object({
+  sources: z.array(z.string()),           // ordenadas por volume total desc
+  rows: z.array(DaySourceRowSchema),      // ordenadas por data asc
+});
+export type ContactsByDaySource = z.infer<typeof ContactsByDaySourceSchema>;
 
 export const PipelineRowSchema = z.object({
   pipeline: z.string(),
@@ -154,11 +185,42 @@ export const OriginBreakdownSchema = z.object({
 });
 export type OriginBreakdown = z.infer<typeof OriginBreakdownSchema>;
 
+// ---------- Artista × origem da sessão (cruzamento) ----------
+export const ArtistSourceCellSchema = z.object({
+  total: z.number(),
+  convertidos: z.number(),
+  naoConvertidos: z.number(),
+  taxaConversao: z.number(), // 0..1 sobre o total da célula
+});
+export type ArtistSourceCell = z.infer<typeof ArtistSourceCellSchema>;
+
+export const ArtistBySourceSchema = z.object({
+  sources: z.array(z.string()), // grupos: ["Clientes Capone", "Clientes dos Artistas"]
+  rows: z.array(
+    z.object({
+      artist: z.string(),
+      bySource: z.record(z.string(), ArtistSourceCellSchema),
+    }),
+  ),
+  // Leads sem sessionSource E sem "Fonte do negócio" — caíram no default (Capone)
+  naoClassificados: z.number().optional(),
+});
+export type ArtistBySource = z.infer<typeof ArtistBySourceSchema>;
+
+// ---------- Agendamentos (calendários GHL) ----------
+export const AppointmentsBreakdownSchema = z.object({
+  total: z.number(),
+  byStatus: z.array(CountRowSchema),  // label = status cru do GHL (confirmed, noshow, ...)
+  byOrigin: z.array(CountRowSchema),  // label = sessionSource do CONTATO (Paid Social, CRM UI, ...)
+});
+export type AppointmentsBreakdown = z.infer<typeof AppointmentsBreakdownSchema>;
+
 export const ReportSchema = z.object({
   generatedAt: z.string(),
   period: z.object({ start: z.string(), end: z.string() }),
   totals: TotalsSchema,
   contactsByDay: z.array(CountRowSchema),
+  contactsByDaySource: ContactsByDaySourceSchema.optional(),
   contactsBySourceSession: z.array(CountRowSchema),
   contactsByChannel: z.array(CountRowSchema),
   sessionXChannel: z.array(CountRowSchema),
@@ -168,11 +230,16 @@ export const ReportSchema = z.object({
   topTags: z.array(CountRowSchema),
   pipelineBreakdown: z.array(PipelineRowSchema),
   byArtist: z.array(PerformanceRowSchema),
-  byCloser: z.array(PerformanceRowSchema),
+  // SDRs não são usuários do GHL — o nome vem do custom field "Dono do negócio".
+  bySdr: z.array(PerformanceRowSchema),
+  // Cruzamento artista × origem da sessão do contato
+  byArtistSource: ArtistBySourceSchema.optional(),
   byOrigin: z.array(PerformanceRowSchema),
   // Novas seções — métricas de ads e visitas por macro-origem (hero)
   adsMetrics: AdsMetricsSchema.optional(),
   visitsByOrigin: OriginBreakdownSchema.optional(),
+  // Agendamentos do período (status + origem) — widget do hero
+  appointments: AppointmentsBreakdownSchema.optional(),
   // Novos campos para gráficos
   vendasFunnel: z.array(
     z.object({

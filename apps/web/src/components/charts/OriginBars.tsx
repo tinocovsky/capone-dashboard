@@ -9,10 +9,7 @@
  * Tema dark via CSS vars.
  */
 import type { OriginBreakdown } from "@capone/shared";
-
-const fmtBRL = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
+import { fmtBRL, fmtPct } from "@/lib/format";
 
 const CORES = {
   artista: "var(--accent-2)",      // roxo

@@ -55,6 +55,39 @@ export async function saveSnapshot(userId: string, start: string, end: string, r
   return data!.id;
 }
 
+export interface SnapshotMeta {
+  id: string;
+  period_start: string;
+  period_end: string;
+  created_at: string;
+  note: string | null;
+}
+
+export async function listSnapshots(userId: string): Promise<SnapshotMeta[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("report_snapshots")
+    .select("id, period_start, period_end, created_at, note")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw new Error(`Falha ao listar snapshots: ${error.message}`);
+  return (data ?? []) as SnapshotMeta[];
+}
+
+export async function getSnapshot(
+  userId: string,
+  id: string,
+): Promise<{ report: Report; period_start: string; period_end: string; created_at: string; note: string | null } | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("report_snapshots")
+    .select("report, period_start, period_end, created_at, note")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as { report: Report; period_start: string; period_end: string; created_at: string; note: string | null };
+}
+
 export async function writeAudit(userId: string, action: string, meta: object): Promise<void> {
   await supabaseAdmin()
     .from("audit_logs")

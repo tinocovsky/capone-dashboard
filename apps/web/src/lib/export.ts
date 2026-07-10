@@ -154,8 +154,8 @@ export function exportCsv(report: Report): void {
   push(`Receita convertida,${t.receitaConvertida.toFixed(2)}`);
   push(`Ticket medio,${t.ticketMedio.toFixed(2)}`);
   push(`Cycle time mediana (d),${t.cycleTimeMedianaDias.toFixed(1)}`);
-  push(`Artistas no mes,${t.artistasNoMes}`);
-  push(`Closers no mes,${t.closersNoMes}`);
+  push(`Artistas no periodo,${t.artistasNoMes}`);
+  push(`SDRs no periodo,${t.sdrsNoMes}`);
   push("");
 
   // Pipeline
@@ -189,10 +189,10 @@ export function exportCsv(report: Report): void {
   }
   push("");
 
-  // Por closer
-  push("## Performance por Closer");
-  push("closer,total,convertidos,nao convertidos,taxa conversao,ticket medio,receita");
-  for (const c of report.byCloser) {
+  // Por SDR (campo "Dono do negócio" no GHL)
+  push("## Performance por SDR");
+  push("sdr,total,convertidos,nao convertidos,taxa conversao,ticket medio,receita");
+  for (const c of report.bySdr) {
     push([
       c.label,
       c.total,
@@ -202,6 +202,21 @@ export function exportCsv(report: Report): void {
       c.ticketMedio.toFixed(2),
       c.receitaConvertida.toFixed(2),
     ].map(escapeCsv).join(","));
+  }
+
+  // Agendamentos (status + origem)
+  if (report.appointments) {
+    push("");
+    push("## Agendamentos");
+    push(`Total,${report.appointments.total}`);
+    push("status,quantidade,percentual");
+    for (const s of report.appointments.byStatus) {
+      push([s.label, s.count, s.percent.toFixed(1) + "%"].map(escapeCsv).join(","));
+    }
+    push("origem,quantidade,percentual");
+    for (const o of report.appointments.byOrigin) {
+      push([o.label, o.count, o.percent.toFixed(1) + "%"].map(escapeCsv).join(","));
+    }
   }
 
   const csv = lines.join("\n");

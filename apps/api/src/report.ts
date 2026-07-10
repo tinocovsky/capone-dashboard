@@ -10,18 +10,22 @@
  * Mapeamento de stageId → tipo (testado contra API real do GHL em jul/2026):
  */
 import type {
+  GhlAppointment,
   GhlContact,
   GhlOpportunity,
   Report,
   CountRow,
+  ContactsByDaySource,
   PerformanceRow,
   PipelineRow,
   Alert,
   AdsMetrics,
+  AppointmentsBreakdown,
+  ArtistBySource,
   OriginBreakdown,
 } from "@capone/shared";
 import { env } from "./env.js";
-import { aggregateAdsMetrics, aggregateVisitsByOrigin, originRowsFromBreakdown, adsTrackingCoverage } from "./ads.js";
+import { aggregateAdsMetrics, aggregateVisitsByOrigin, classifyMacroOrigin, originRowsFromBreakdown, adsTrackingCoverage } from "./ads.js";
 
 const EXCLUDED_ARTIST = "arlon";
 
@@ -98,6 +102,10 @@ export function buildReport(
   end: string,
   contacts: GhlContact[],
   opps: GhlOpportunity[],
+  appointmentEvents: GhlAppointment[] = [],
+  // Contatos de agendamentos/opps que foram criados FORA do período (buscados à
+  // parte só pra classificar origem) — não entram em novosContatos nem nas seções de contatos.
+  extraContacts: GhlContact[] = [],
 ): Report {
   // --- Filtra artista excluído ---
   const filteredOpps = opps.filter((o) => {
@@ -122,25 +130,96 @@ export function buildReport(
   const decided = classified.filter((c) => c.won || c.lost);
   const converted = classified.filter((c) => c.won);
   const lost = classified.filter((c) => c.lost);
+
+  // Lookup de contato por id (período + extras) — usado pra classificar a origem
+  // (sessionSource) de agendamentos e de opps por artista.
+  const contactLookup = new Map<string, GhlContact>();
+  for (const c of contacts) contactLookup.set(c.id, c);
+  for (const c of extraContacts) contactLookup.set(c.id, c);
+
+  // "Fonte do negócio" (custom da opp) por contato — fallback de origem quando o
+  // sessionSource nativo está em branco ou é "CRM UI". Opp mais recente vence.
+  const fonteByContact = new Map<string, { fonte: string; at: string }>();
+  for (const o of filteredOpps) {
+    if (!o.contactId) continue;
+    const fonte = pickCustom(o.customFields, env.GHL_FIELD_FONTE_NEGOCIO);
+    if (!fonte) continue;
+    const at = o.createdAt ?? "";
+    const cur = fonteByContact.get(o.contactId);
+    if (!cur || at > cur.at) fonteByContact.set(o.contactId, { fonte, at });
+  }
+
+  /** "Fonte do negócio" cai nos buckets nativos equivalentes, pra não criar
+   *  categorias paralelas às do sessionSource: Social Pago → Paid Social,
+   *  Social Orgânico → Social media, Pesquisa Paga → Paid Search, Pesquisa
+   *  Orgânica → Organic Search. Demais valores (Artistas, Passante, ...)
+   *  passam direto. */
+  function normalizeFallbackSource(fonte: string): string {
+    if (/social\s*pago/i.test(fonte)) return "Paid Social";
+    if (/social\s*org[âa]nico/i.test(fonte)) return "Social media";
+    if (/pesquisa\s*paga/i.test(fonte)) return "Paid Search";
+    if (/pesquisa\s*org[âa]nica/i.test(fonte)) return "Organic Search";
+    return fonte;
+  }
+
+  /** Origem do contato com fallback: sessionSource nativo vence (exceto "CRM UI");
+   *  em branco/CRM UI usa a "Fonte do negócio" da opp mais recente (normalizada —
+   *  ver normalizeFallbackSource); senão mantém "CRM UI"/"(sem)". Contato sem opp
+   *  não tem fallback. */
+  const resolveOrigin = (contactId: string | null | undefined): string => {
+    if (!contactId) return "(sem)";
+    const src = contactLookup.get(contactId)?.attributionSource?.sessionSource?.trim();
+    if (src && src !== "CRM UI") return src;
+    const fonte = fonteByContact.get(contactId)?.fonte;
+    if (fonte) return normalizeFallbackSource(fonte);
+    return src || "(sem)";
+  };
   const receita = converted.reduce((s, c) => s + (c.o.monetaryValue ?? 0), 0);
   const ticket = converted.length ? receita / converted.length : 0;
 
   // --- Cycle time (mediana) ---
-  const cycleDays = converted
-    .map((c) => {
-      const o = c.o;
-      const a = new Date(o.createdAt ?? "").getTime();
-      const b = new Date(o.updatedAt ?? o.lastStageChangeAt ?? o.createdAt ?? "").getTime();
-      return Math.max(0, (b - a) / 86_400_000);
-    })
-    .filter((d) => d > 0)
-    .sort((x, y) => x - y);
+  const cycleDaysAll = converted.map((c) => {
+    const o = c.o;
+    const a = new Date(o.createdAt ?? "").getTime();
+    const b = new Date(o.updatedAt ?? o.lastStageChangeAt ?? o.createdAt ?? "").getTime();
+    return Math.max(0, (b - a) / 86_400_000);
+  });
+  // Fração de cycle = 0 (medida ANTES de filtrar — é o sinal de backfill/retro-paint)
+  const zeroDayShare = cycleDaysAll.length
+    ? cycleDaysAll.filter((d) => d === 0).length / cycleDaysAll.length
+    : 0;
+  const cycleDays = cycleDaysAll.filter((d) => d > 0).sort((x, y) => x - y);
   const medianCycle = cycleDays.length ? cycleDays[Math.floor(cycleDays.length / 2)] : 0;
 
   // --- Contatos por dia ---
   const byDay = new Map<string, number>();
   for (const c of contacts) inc(byDay, dayKey(c.dateAdded));
   const contactsByDay = toRows(byDay, contacts.length, 60);
+
+  // --- Contatos por dia × origem ---
+  // sessionSource nativo, com fallback pra "Fonte do negócio" da opp (resolveOrigin).
+  const byDaySource = new Map<string, Map<string, number>>();
+  const sourceTotals = new Map<string, number>();
+  for (const c of contacts) {
+    const d = dayKey(c.dateAdded);
+    const src = resolveOrigin(c.id);
+    let m = byDaySource.get(d);
+    if (!m) byDaySource.set(d, (m = new Map()));
+    m.set(src, (m.get(src) ?? 0) + 1);
+    inc(sourceTotals, src);
+  }
+  const contactsByDaySource: ContactsByDaySource = {
+    sources: Array.from(sourceTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([s]) => s),
+    rows: Array.from(byDaySource.entries())
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([date, m]) => ({
+        date,
+        total: Array.from(m.values()).reduce((s, n) => s + n, 0),
+        bySource: Object.fromEntries(m),
+      })),
+  };
 
   // --- Origem sessão / canal / cross / landing / ad / legacy / tags ---
   const bySession = new Map<string, number>();
@@ -153,14 +232,15 @@ export function buildReport(
   const BOT_TAGS = /bot|teste|pix|payment/i;
 
   for (const c of contacts) {
-    const ses = c.attributionSource?.session;
-    const session = ses?.medium?.split("/")[0]?.trim() || "(sem)";
-    const channel = ses?.medium?.toLowerCase().trim() || "(sem)";
+    // attributionSource é flat no /contacts/search (sessionSource/medium/url/adId).
+    const att = c.attributionSource;
+    const session = att?.sessionSource?.trim() || "(sem)";
+    const channel = att?.medium?.toLowerCase().trim() || "(sem)";
     inc(bySession, session);
     inc(byChannel, channel);
     inc(bySessionChannel, `${session} / ${channel}`);
-    if (ses?.url) inc(byLanding, ses.url);
-    if (ses?.adId) inc(byAd, ses.adId);
+    if (att?.url) inc(byLanding, att.url);
+    if (att?.adId) inc(byAd, att.adId);
     if (c.source) inc(byLegacy, c.source);
     for (const t of c.tags ?? []) if (!BOT_TAGS.test(t)) inc(byTag, t);
   }
@@ -184,17 +264,17 @@ export function buildReport(
     receitaConvertida: v.receita,
   }));
 
-  // --- Performance por artista / closer / origem ---
+  // --- Performance por artista / SDR / origem ---
   // "artista" = custom field "Artista escolhido" (9XPhm85vxOYEyZ6yRB9N, tatuador).
-  // "closer" = assignedTo (user do GHL — o ID precisa ser mapeado pra nome no frontend).
-  // "Dono do negócio" (c345zUnE33gH96uyEJI6) NÃO é closer — é um campo custom auxiliar.
-  const buildPerfRows = (key: "artist" | "closer" | "origin"): PerformanceRow[] => {
+  // "sdr" = custom field "Dono do negócio" (c345zUnE33gH96uyEJI6). Os SDRs NÃO são
+  // usuários do GHL (assignedTo) — o nome de cada um vive nesse campo custom.
+  const buildPerfRows = (key: "artist" | "sdr" | "origin"): PerformanceRow[] => {
     const map = new Map<string, { total: number; conv: number; lost: number; receita: number }>();
     for (const c of classified) {
       const o = c.o;
       let k = "(não preenchido)";
       if (key === "artist") k = pickCustom(o.customFields, env.GHL_ARTIST_FIELD_ID) || k;
-      if (key === "closer") k = o.assignedTo || k;
+      if (key === "sdr") k = pickCustom(o.customFields, env.GHL_DONO_NEGOCIO_FIELD_ID) || k;
       if (key === "origin") k = mapOrigin(o);
       const v = map.get(k) ?? { total: 0, conv: 0, lost: 0, receita: 0 };
       v.total++;
@@ -215,6 +295,56 @@ export function buildReport(
       .sort((a, b) => b.receitaConvertida - a.receitaConvertida);
   };
 
+  // --- Artista × grupo de clientes (Capone × Artistas) ---
+  // Regra: sessionSource válido (≠ CRM UI) → Clientes Capone. Em branco/CRM UI,
+  // decide pela "Fonte do negócio" da opp: "Artistas" → Clientes dos Artistas;
+  // qualquer outra coisa (Passante, Inbound, vazio) → Clientes Capone.
+  const GRUPO_CAPONE = "Clientes Capone";
+  const GRUPO_ARTISTAS = "Clientes dos Artistas";
+  type ASCell = { total: number; conv: number; lost: number };
+  const artistSourceMap = new Map<string, Map<string, ASCell>>();
+  const asArtistReceita = new Map<string, number>(); // só pra ordenar as linhas
+  let asNaoClassificados = 0; // sem source E sem fonte → caíram no default Capone
+  for (const c of classified) {
+    const artist = pickCustom(c.o.customFields, env.GHL_ARTIST_FIELD_ID) || "(não preenchido)";
+    const src = c.o.contactId
+      ? contactLookup.get(c.o.contactId)?.attributionSource?.sessionSource?.trim()
+      : undefined;
+    let grupo = GRUPO_CAPONE;
+    if (!src || src === "CRM UI") {
+      if (classifyMacroOrigin(c.o) === "artista") grupo = GRUPO_ARTISTAS;
+      else if (!pickCustom(c.o.customFields, env.GHL_FIELD_FONTE_NEGOCIO)) asNaoClassificados++;
+    }
+    let m = artistSourceMap.get(artist);
+    if (!m) artistSourceMap.set(artist, (m = new Map()));
+    let cell = m.get(grupo);
+    if (!cell) m.set(grupo, (cell = { total: 0, conv: 0, lost: 0 }));
+    cell.total++;
+    if (c.won) cell.conv++;
+    else if (c.lost) cell.lost++;
+    if (c.won) asArtistReceita.set(artist, (asArtistReceita.get(artist) ?? 0) + (c.o.monetaryValue ?? 0));
+  }
+  const byArtistSource: ArtistBySource = {
+    sources: [GRUPO_CAPONE, GRUPO_ARTISTAS],
+    naoClassificados: asNaoClassificados,
+    rows: Array.from(artistSourceMap.entries())
+      .sort((a, b) => (asArtistReceita.get(b[0]) ?? 0) - (asArtistReceita.get(a[0]) ?? 0))
+      .map(([artist, m]) => ({
+        artist,
+        bySource: Object.fromEntries(
+          Array.from(m.entries()).map(([s, cell]) => [
+            s,
+            {
+              total: cell.total,
+              convertidos: cell.conv,
+              naoConvertidos: cell.lost,
+              taxaConversao: cell.total ? cell.conv / cell.total : 0,
+            },
+          ]),
+        ),
+      })),
+  };
+
   // --- Alertas gerados ---
   const alerts: Alert[] = [];
   const vendasRow = pipelineBreakdown.find((p) => p.pipeline === env.GHL_PIPELINE_VENDAS);
@@ -225,12 +355,14 @@ export function buildReport(
       message: `Pipeline de Vendas fechou ${(vendasRow.taxaConversao * 100).toFixed(1)}% (${vendasRow.convertidos}/${vendasRow.total}).`,
     });
   }
-  const semCloser = classified.filter((c) => !c.o.assignedTo).length;
-  if (semCloser > 0) {
+  const semSdr = classified.filter(
+    (c) => !pickCustom(c.o.customFields, env.GHL_DONO_NEGOCIO_FIELD_ID),
+  ).length;
+  if (semSdr > 0) {
     alerts.push({
       severity: "warn",
-      title: `${semCloser} leads sem closer atribuído`,
-      message: "100% não convertidos. Leads sem responsável morrem no funil.",
+      title: `${semSdr} leads sem SDR atribuído`,
+      message: "Sem \"Dono do negócio\" preenchido. Leads sem responsável morrem no funil.",
     });
   }
   const crmUi = bySessionChannel.get("CRM UI / manual") ?? 0;
@@ -241,7 +373,6 @@ export function buildReport(
       message: "Origem sem rastreamento — investigar se é prospecção, indicação ou erro de processo.",
     });
   }
-  const zeroDayShare = cycleDays.length ? cycleDays.filter((d) => d === 0).length / cycleDays.length : 0;
   if (zeroDayShare > 0.5) {
     alerts.push({
       severity: "warn",
@@ -302,6 +433,21 @@ export function buildReport(
     revenueByDay.push({ date: d, receita: r, acumulado: acc });
   }
 
+  // --- Agendamentos (status + origem do CONTATO) ---
+  // Origem = attributionSource.sessionSource do contato agendado (Paid Social,
+  // Paid Search, Social media, CRM UI, ...), igual à seção "Por origem (sessão)".
+  const apptStatus = new Map<string, number>();
+  const apptOrigin = new Map<string, number>();
+  for (const a of appointmentEvents) {
+    inc(apptStatus, a.appointmentStatus || "(sem status)");
+    inc(apptOrigin, resolveOrigin(a.contactId));
+  }
+  const appointments: AppointmentsBreakdown = {
+    total: appointmentEvents.length,
+    byStatus: toRows(apptStatus, appointmentEvents.length),
+    byOrigin: toRows(apptOrigin, appointmentEvents.length),
+  };
+
   // --- Métricas de Ads (Meta/Google/TikTok/Orgânico/Outros) e Visitas por Origem ---
   // Ambos derivados de classified (lista já com won/lost) + contacts (pra fbclid/gclid).
   const adsMetrics: AdsMetrics = aggregateAdsMetrics(contacts, classified);
@@ -330,9 +476,10 @@ export function buildReport(
       ticketMedio: ticket,
       cycleTimeMedianaDias: medianCycle,
       artistasNoMes: new Set(classified.map((c) => pickCustom(c.o.customFields, env.GHL_ARTIST_FIELD_ID)).filter(Boolean)).size,
-      closersNoMes: new Set(classified.map((c) => c.o.assignedTo).filter(Boolean)).size,
+      sdrsNoMes: new Set(classified.map((c) => pickCustom(c.o.customFields, env.GHL_DONO_NEGOCIO_FIELD_ID)).filter(Boolean)).size,
     },
     contactsByDay,
+    contactsByDaySource,
     contactsBySourceSession: toRows(bySession, contacts.length),
     contactsByChannel: toRows(byChannel, contacts.length),
     sessionXChannel: toRows(bySessionChannel, contacts.length, 10),
@@ -342,7 +489,8 @@ export function buildReport(
     topTags: toRows(byTag, contacts.length, 30),
     pipelineBreakdown,
     byArtist: buildPerfRows("artist"),
-    byCloser: buildPerfRows("closer"),
+    bySdr: buildPerfRows("sdr"),
+    byArtistSource,
     // Performance por Origem agora vem dos 4 buckets canônicos do briefing
     // (Artistas / Social Pago / Social Orgânico / Passante) — não mais do
     // mapOrigin() heurístico. Veja ads.ts:originRowsFromBreakdown.
@@ -350,6 +498,7 @@ export function buildReport(
     // Métricas de Ads (Meta/Google/TikTok) e visitas por macro-origem
     adsMetrics,
     visitsByOrigin,
+    appointments,
     vendasFunnel,
     revenueByDay,
     alerts,

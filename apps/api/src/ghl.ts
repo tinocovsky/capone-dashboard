@@ -23,7 +23,7 @@
  * Headers: User-Agent de browser é obrigatório (Cloudflare 1010 bloqueia UA genéricos).
  */
 import { env } from "./env.js";
-import type { GhlContact, GhlOpportunity } from "@capone/shared";
+import type { GhlAppointment, GhlContact, GhlOpportunity } from "@capone/shared";
 
 const BROWSER_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
@@ -189,6 +189,52 @@ export async function fetchOppsInRange(start: string, end: string): Promise<GhlO
     const d = o.createdAt?.slice(0, 10);
     return d && d >= start && d <= end;
   });
+}
+
+/** Agendamentos dos calendários configurados cujo startTime cai no período.
+ *  GET /calendars/events exige calendarId (ou userId/groupId) — a listagem de
+ *  calendários está fora do escopo do token (401), por isso os IDs vêm de
+ *  env.GHL_CALENDAR_IDS. Sem paginação: o endpoint retorna tudo do intervalo. */
+export async function fetchAppointmentsInRange(start: string, end: string): Promise<GhlAppointment[]> {
+  const calendarIds = env.GHL_CALENDAR_IDS.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!calendarIds.length) return [];
+  const startMs = Date.parse(`${start}T00:00:00.000Z`);
+  const endMs = Date.parse(`${end}T23:59:59.999Z`);
+  const perCalendar = await Promise.all(
+    calendarIds.map(async (calendarId) => {
+      const res = await ghlFetch(
+        `/calendars/events?locationId=${env.GHL_LOCATION_ID}&calendarId=${calendarId}&startTime=${startMs}&endTime=${endMs}`,
+        { headers: { Version: "2021-04-15" } },
+      );
+      const json = (await res.json()) as { events?: GhlAppointment[] };
+      return Array.isArray(json.events) ? json.events : [];
+    }),
+  );
+  return perCalendar.flat();
+}
+
+/** Busca contatos individuais por id (GET /contacts/:id), em lotes paralelos.
+ *  Usado pra classificar a origem de agendamentos cujo contato foi criado fora
+ *  do período do relatório. Contato deletado/inacessível é simplesmente pulado. */
+export async function fetchContactsByIds(ids: string[]): Promise<GhlContact[]> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const out: GhlContact[] = [];
+  for (let i = 0; i < unique.length; i += PAGE_CONCURRENCY) {
+    const batch = unique.slice(i, i + PAGE_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (id) => {
+        try {
+          const res = await ghlFetch(`/contacts/${id}`);
+          const json = (await res.json()) as { contact?: GhlContact };
+          return json.contact ?? null;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    for (const c of results) if (c) out.push(c);
+  }
+  return out;
 }
 
 /** Retorna contagem de opps vazias no pipeline de prospecção (reativação). */

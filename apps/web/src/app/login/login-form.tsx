@@ -31,19 +31,24 @@ export default function LoginForm() {
   }
 
   return (
-    <>
-      <label>Email</label>
-      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@caponeclub.com.br" />
-      <label>Senha</label>
-      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!loading && email && password) void signInWithPassword();
+      }}
+    >
+      <label htmlFor="login-email">Email</label>
+      <input id="login-email" type="email" autoFocus autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@caponeclub.com.br" />
+      <label htmlFor="login-password">Senha</label>
+      <input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       {err && <div className="err">{err}</div>}
       {msg && <div className="sub" style={{ color: "var(--green)", marginTop: 8 }}>{msg}</div>}
-      <button onClick={signInWithPassword} disabled={loading || !email || !password}>
+      <button type="submit" disabled={loading || !email || !password}>
         {loading ? "..." : "Entrar"}
       </button>
-      <button className="ghost" onClick={sendMagicLink} disabled={loading || !email}>
+      <button type="button" className="ghost" onClick={sendMagicLink} disabled={loading || !email}>
         Enviar magic link
       </button>
-    </>
+    </form>
   );
 }

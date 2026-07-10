@@ -13,3 +13,8 @@ coverage
 *.tsbuildinfo
 
 SUPABASE_KEYS.txt
+
+# Editor / agent local config (não vai pro repo)
+.claude/
+.idea/
+.vscode/

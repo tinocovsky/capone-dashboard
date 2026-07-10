@@ -10,11 +10,13 @@ import {
   ResponsiveContainer,
   type TooltipProps,
 } from "recharts";
+import { fmtBRL, fmtPct } from "@/lib/format";
 
 export const COLORS = {
   accent: "var(--accent)",
   accent2: "var(--accent-2)",
   green: "var(--green)",
+  cyan: "var(--cyan)",
   yellow: "var(--yellow)",
   red: "var(--red)",
   ink: "var(--ink)",
@@ -24,9 +26,27 @@ export const COLORS = {
   panel2: "var(--panel-2)",
 };
 
-const fmtBRL = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
+// Cores fixas por sessionSource ("UTM Session Source" do GHL) — consistentes
+// entre o gráfico de contatos por dia e o widget de agendamentos.
+export const SESSION_SOURCE_COLORS: Record<string, string> = {
+  "Paid Social": COLORS.accent,
+  "Paid Search": COLORS.yellow,
+  "Social media": COLORS.green,
+  "Organic Search": COLORS.accent2,
+  "CRM UI": COLORS.red,
+  "Direct traffic": COLORS.muted,
+  // Grupos da seção 2.1 (Capone × Artistas)
+  "Clientes Capone": COLORS.accent,
+  "Clientes dos Artistas": COLORS.cyan,
+  // Labels de fallback via "Fonte do negócio" (aparecem quando o source nativo está em branco/CRM UI)
+  "Artistas (Art)": COLORS.cyan,
+  "Passante (Pas)": COLORS.accent2,
+  "Social Pago (Inb)": COLORS.accent,
+};
+const FALLBACK_PALETTE = [COLORS.accent, COLORS.accent2, COLORS.green, COLORS.yellow, COLORS.red, COLORS.muted];
+export function sourceColor(label: string, i: number): string {
+  return SESSION_SOURCE_COLORS[label] ?? FALLBACK_PALETTE[i % FALLBACK_PALETTE.length];
+}
 
 export function ChartContainer({ children, height = 240 }: { children: React.ReactNode; height?: number }) {
   return (
@@ -41,9 +61,11 @@ export function ChartContainer({ children, height = 240 }: { children: React.Rea
 // Tipo mínimo do payload (Recharts exporta um tipo mas é genérico)
 interface TooltipEntry { name?: string; value?: number; color?: string }
 
-/** Tooltip dark com formatação automática (BRL se valor >= 1000, % se 0..1). */
+/** Tooltip dark com formatação automática (BRL se valor >= 1000, % se 0..1).
+ *  `valueFormatter` recebe também o nome da série, p/ formatar séries mistas
+ *  (ex.: contagens + receita no mesmo gráfico). */
 export function DarkTooltip(props: TooltipProps<number, string> & {
-  valueFormatter?: (v: number) => string;
+  valueFormatter?: (v: number, name?: string) => string;
 }) {
   // Recharts v3 mudou a tipagem; recebemos via any para acessar payload/label sem dor.
   const p = props as unknown as {
@@ -52,7 +74,7 @@ export function DarkTooltip(props: TooltipProps<number, string> & {
     label?: string | number;
   };
   const { active, payload, label } = p;
-  const valueFormatter = (props as { valueFormatter?: (v: number) => string }).valueFormatter;
+  const valueFormatter = (props as { valueFormatter?: (v: number, name?: string) => string }).valueFormatter;
   if (!active || !payload?.length) return null;
   return (
     <div
@@ -72,7 +94,7 @@ export function DarkTooltip(props: TooltipProps<number, string> & {
       {payload.map((entry, i) => {
         const v = entry.value ?? 0;
         const display = valueFormatter
-          ? valueFormatter(v)
+          ? valueFormatter(v, entry.name)
           : Math.abs(v) >= 1000
           ? fmtBRL(v)
           : v <= 1 && v >= 0

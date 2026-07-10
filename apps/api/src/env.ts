@@ -11,9 +11,13 @@ const EnvSchema = z.object({
   // e logar mesmo sem ter o token do LeadConnector configurado. Os endpoints
   // /api/reports vão falhar em runtime se o token for o placeholder.
   GHL_API_TOKEN: z.string().min(1),
-  GHL_PIPELINE_VENDAS: z.string().default("xPHe69K2B7CAgZylF0Vs"),
-  GHL_PIPELINE_POS_VENDAS: z.string().default("t5Ikv6vkfOg0h8c2Puvh"),
-  GHL_LOCATION_ID: z.string().default("YOUR_LOCATION_ID"),
+  // Defaults são os IDs REAIS da location C8d1LN8IL9XdN9kDkaF9 (jul/2026) —
+  // confirmados via /opportunities/pipelines?locationId=… e listagem de contatos.
+  // O .env.example mantém placeholders, mas o código cai no default certo
+  // se o .env não tiver override (ex: dev novo copiando só o env.example).
+  GHL_PIPELINE_VENDAS: z.string().default("pO2K0v6YDMGFF6SIRjfD"),
+  GHL_PIPELINE_POS_VENDAS: z.string().default("BeT55Wi2a64zC0YcSKBG"),
+  GHL_LOCATION_ID: z.string().default("C8d1LN8IL9XdN9kDkaF9"),
   GHL_ARTIST_FIELD_ID: z.string().default("9XPhm85vxOYEyZ6yRB9N"),
   // Dono do negócio (closer) — fieldKey "opportunity.dono_do_negcio"
   GHL_DONO_NEGOCIO_FIELD_ID: z.string().default("c345zUnE33gH96uyEJI6"),
@@ -30,6 +34,11 @@ const EnvSchema = z.object({
   GHL_FIELD_UTM_CAMPAIGN: z.string().default("sTVTXe83MyO0AxS0cX6W"),  // contact.utm_campaign
   GHL_FIELD_FONTE_NEGOCIO: z.string().default("Z9V5sduzueNFxPbqtqGh"),  // opportunity.fonte_do_negcio (macro)
   GHL_FIELD_CANAL_NEGOCIO: z.string().default("nLruNd6tbsG0lE16LDzI"),  // opportunity.canal_do_negcio
+  // Calendários de agendamento (IDs separados por vírgula). O token atual não tem
+  // o escopo "calendars.readonly" (listagem retorna 401), mas o de eventos funciona —
+  // então os IDs precisam ser informados aqui. Defaults descobertos via
+  // /contacts/:id/appointments da location C8d1LN8IL9XdN9kDkaF9 (jul/2026).
+  GHL_CALENDAR_IDS: z.string().default("dBloB6VYTAyzdfPdZV5u,D3K8VJN0DGXtAlXH2O9H"),
   // Pipeline de prospecção (reativação) — opps vazias, ficam em bucket separado
   GHL_PIPELINE_PROSPECCAO: z.string().default(""),
   // Pipeline de Barbearia (caso queira incluir separado)
