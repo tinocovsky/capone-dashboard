@@ -6,6 +6,7 @@ import { supabaseBrowser, authedFetch } from "@/lib/supabase-browser";
 import { exportPdf, exportCsv, shareLink } from "@/lib/export";
 import { fmtBRL, fmtPct, fmtCycle, fmtPeriod, fmtDateBR } from "@/lib/format";
 import { SnapshotsPanel, type SnapshotMeta } from "@/components/SnapshotsPanel";
+import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
 
 // Charts são client-only (Recharts usa window/DOM). Carregamento dinâmico para não quebrar SSR.
 const ContactsByDayChart = dynamic(
@@ -369,8 +370,14 @@ export default function Dashboard({
       <div className="sub">Capone Club • {user.email}</div>
 
       <div className="toolbar no-export" style={{ marginTop: 12 }}>
-        <label className="sub" htmlFor="dt-start">Início <input id="dt-start" type="date" value={start} disabled={frozen} onChange={(e) => setStart(e.target.value)} style={{ marginLeft: 4, padding: 4, background: "var(--panel)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 6 }} /></label>
-        <label className="sub" htmlFor="dt-end">Fim <input id="dt-end" type="date" value={end} disabled={frozen} onChange={(e) => setEnd(e.target.value)} style={{ marginLeft: 4, padding: 4, background: "var(--panel)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 6 }} /></label>
+        <DateRangePicker
+          value={{ start, end }}
+          onChange={({ start: s, end: e }: DateRange) => {
+            setStart(s);
+            setEnd(e);
+          }}
+          disabled={frozen}
+        />
         {presets.map((p) => (
           <button key={p.label} className="pill-btn" onClick={p.apply} disabled={loading || frozen}>{p.label}</button>
         ))}
