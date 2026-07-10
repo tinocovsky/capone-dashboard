@@ -8,12 +8,16 @@
  *   converteram opps em VENDAS_STAGE_WON (lastStageChangeAt)
  *
  * Visualização: tabela com 1 linha por canal + linha "Total" no fim.
- *   - Coluna de cada estágio: contagem absoluta + step rate (entre stages) + abs rate (sobre o topo)
- *   - Step rate em cor semafórica: verde ≥50%, amarelo 25-50%, vermelho <25%
- *   - Abs rate discreto (cinza), sem cor — é contexto, não gargalo
+ *   - Coluna de cada estágio: contagem absoluta + % absoluto (sobre o topo do funil)
+ *   - % absoluto é SEMPRE o único percentual visível — o briefing pediu que
+ *     o percentual seja "com base no número total de contatos" do canal
+ *   - Cor semafórica calibrada POR ESTÁGIO (ver ABS_THRESHOLDS abaixo) — os
+ *     limiares mudam estágio a estágio porque a taxa saudável encolhe
+ *     conforme desce no funil
+ *   - Step rate (% entre stages consecutivos) NÃO aparece na UI, mas continua
+ *     sendo calculado e exposto no schema (r.stepRates) — alimenta os
+ *     alertas RevOps em report.ts. Ver skill `revenue-ops-funnel`.
  *   - Receita no fim pra fechar a decisão (qual canal converte E traz receita)
- *
- * Ver skill `revenue-ops-funnel` pra metodologia e alertas RevOps.
  */
 import type { FunnelByOrigin as FunnelByOriginType } from "@capone/shared";
 import { fmtBRL, fmtPct } from "@/lib/format";
@@ -26,18 +30,30 @@ const STAGE_LABEL: Record<string, string> = {
   converteram: "Converteram",
 };
 
-// Limiar da cor semafórica do STEP rate (entre stages consecutivos).
-// Funil composto saudável: lead→agend ~25%, agend→visita ~65%, visita→tat.agend ~30%,
-// tat.agend→conv ~70%. Composição ~3.4%. Limiar verde ≥50% cai no "show/qualifica
-// bem", amarelo 25-50% no "normal com leak", vermelho <25% no "vazando".
-function stepClass(rate: number, denom: number): string {
-  if (denom === 0) return "";
-  if (rate >= 0.5) return "green";
-  if (rate >= 0.25) return "yellow";
+// Limiares da cor semafórica do % ABSOLUTO, calibrados POR ESTÁGIO.
+// O % absoluto encolhe conforme o funil desce (saudável: lead→agend ~25%,
+// agend→visita ~65% [mostrado em step], visita→tat.agend ~30%, tat.agend→conv ~70%).
+// O % absoluto esperado cai junto: ~25% → ~16% → ~5% → ~3% do topo.
+// Limiar "verde" = nessa faixa ou acima; "amarelo" = perdeu algum furo;
+// "vermelho" = o canal não chega no fundo do funil em volume relevante.
+// (O 1º estágio "novos" é sempre 100% — sem cor, é a referência do funil.)
+const ABS_THRESHOLDS: Record<string, { green: number; yellow: number }> = {
+  //           verde   amarelo (entre = yellow, abaixo = red)
+  agendaram:    { green: 0.20, yellow: 0.10 },
+  visita:       { green: 0.15, yellow: 0.05 },
+  tatAgend:     { green: 0.05, yellow: 0.02 },
+  converteram:  { green: 0.03, yellow: 0.01 },
+};
+
+function absClass(stage: string, rate: number): string {
+  const t = ABS_THRESHOLDS[stage];
+  if (!t) return ""; // "novos" ou stage desconhecido — sem cor
+  if (rate >= t.green) return "green";
+  if (rate >= t.yellow) return "yellow";
   return "red";
 }
 
-function Cell({ value, rate, absRate, denom }: { value: number; rate: number; absRate: number; denom: number }) {
+function Cell({ value, absRate, stage }: { value: number; absRate: number; stage: string }) {
   if (value === 0) {
     return (
       <td className="num" style={{ color: "var(--muted)" }}>
@@ -46,18 +62,19 @@ function Cell({ value, rate, absRate, denom }: { value: number; rate: number; ab
       </td>
     );
   }
-  const cls = stepClass(rate, denom);
+  // "novos" não tem cor (é a referência 100% do funil)
+  const cls = stage === "novos" ? "" : absClass(stage, absRate);
+  const title = stage === "novos"
+    ? "Topo do funil (referência)"
+    : `% sobre o topo do funil (novos) — limiar: ≥${fmtPct(ABS_THRESHOLDS[stage].green)} verde, ≥${fmtPct(ABS_THRESHOLDS[stage].yellow)} amarelo`;
   return (
     <td className="num">
       <strong>{value.toLocaleString("pt-BR")}</strong>
-      {denom > 0 && (
+      {absRate > 0 && (
         <div style={{ fontSize: 10, lineHeight: 1.3, marginTop: 2 }}>
-          <span className={cls} style={{ fontWeight: 600 }}>{fmtPct(rate)}</span>
-          {absRate > 0 && (
-            <span style={{ color: "var(--muted)", marginLeft: 4 }} title="% sobre o topo do funil">
-              ({fmtPct(absRate)} abs)
-            </span>
-          )}
+          <span className={cls} style={{ fontWeight: 600 }} title={title}>
+            {fmtPct(absRate)}
+          </span>
         </div>
       )}
     </td>
@@ -88,7 +105,6 @@ export function FunnelByOrigin({ data }: { data: FunnelByOriginType }) {
         </thead>
         <tbody>
           {data.rows.map((r) => {
-            const step = (k: string) => r.stepRates[k] ?? 0;
             const abs = (k: string) => r.absoluteRates[k] ?? 0;
             const cnt = (k: string) => r.steps[k] ?? 0;
             return (
@@ -96,18 +112,14 @@ export function FunnelByOrigin({ data }: { data: FunnelByOriginType }) {
                 <td>
                   <strong>{r.origin}</strong>
                 </td>
-                {stages.map((s, i) => {
-                  const denom = i === 0 ? cnt(s) : cnt(stages[i - 1]);
-                  return (
-                    <Cell
-                      key={s}
-                      value={cnt(s)}
-                      rate={step(s)}
-                      absRate={abs(s)}
-                      denom={denom}
-                    />
-                  );
-                })}
+                {stages.map((s) => (
+                  <Cell
+                    key={s}
+                    stage={s}
+                    value={cnt(s)}
+                    absRate={abs(s)}
+                  />
+                ))}
                 <td className="num" style={{ textAlign: "right", color: r.receita > 0 ? "var(--green)" : "var(--muted)" }}>
                   <strong>{r.receita > 0 ? fmtBRL(r.receita) : "—"}</strong>
                 </td>
@@ -120,18 +132,14 @@ export function FunnelByOrigin({ data }: { data: FunnelByOriginType }) {
               <td>
                 <strong>{data.totals.origin}</strong>
               </td>
-              {stages.map((s, i) => {
-                const denom = i === 0 ? data.totals.steps[s] ?? 0 : data.totals.steps[stages[i - 1]] ?? 0;
-                return (
-                  <Cell
-                    key={s}
-                    value={data.totals.steps[s] ?? 0}
-                    rate={data.totals.stepRates[s] ?? 0}
-                    absRate={data.totals.absoluteRates[s] ?? 0}
-                    denom={denom}
-                  />
-                );
-              })}
+              {stages.map((s) => (
+                <Cell
+                  key={s}
+                  stage={s}
+                  value={data.totals.steps[s] ?? 0}
+                  absRate={data.totals.absoluteRates[s] ?? 0}
+                />
+              ))}
               <td className="num" style={{ textAlign: "right", color: data.totals.receita > 0 ? "var(--green)" : "var(--muted)" }}>
                 <strong>{data.totals.receita > 0 ? fmtBRL(data.totals.receita) : "—"}</strong>
               </td>

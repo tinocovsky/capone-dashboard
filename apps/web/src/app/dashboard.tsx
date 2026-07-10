@@ -529,8 +529,11 @@ export default function Dashboard({
                 5 estágios canônicos (RevOps): <strong>Novos</strong> → <strong>Agendaram</strong> (appts new/confirmed/showed) →{" "}
                 <strong>Visita</strong> (opps Vendas, createdAt) → <strong>Tat. agend.</strong> (stage "Tatuagem agendada",{" "}
                 <code>lastStageChangeAt</code>) → <strong>Converteram</strong> (won, <code>lastStageChangeAt</code>).{" "}
-                Em cada célula: <span style={{ color: "var(--green)" }}>verde</span> ≥50%, <span style={{ color: "var(--yellow)" }}>amarelo</span> 25-50%,{" "}
-                <span style={{ color: "var(--red)" }}>vermelho</span> &lt;25% do <em>stage</em> anterior. O número entre parênteses é % sobre o topo do funil.
+                O percentual em cada célula é <strong>sempre sobre o topo do funil</strong> (novos contatos do canal) — o briefing pediu essa referência fixa.{" "}
+                Cor semafórica calibrada por estágio:{" "}
+                <span style={{ color: "var(--green)" }}>verde</span> = saudável praquele estágio,{" "}
+                <span style={{ color: "var(--yellow)" }}>amarelo</span> = perdeu algum volume,{" "}
+                <span style={{ color: "var(--red)" }}>vermelho</span> = o canal não chega no fundo do funil.
                 Canal = <code>sessionSource</code> nativo do GHL, com fallback em <code>Fonte do negócio</code> quando vazio/CRM UI.
               </div>
               <FunnelByOrigin data={report.funnelByOrigin} />
