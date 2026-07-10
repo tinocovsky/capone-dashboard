@@ -26,6 +26,7 @@ import type {
 } from "@capone/shared";
 import { env } from "./env.js";
 import { aggregateAdsMetrics, aggregateVisitsByOrigin, classifyMacroOrigin, originRowsFromBreakdown, adsTrackingCoverage } from "./ads.js";
+import { buildFunnelByOrigin } from "./funnel.js";
 
 const EXCLUDED_ARTIST = "arlon";
 
@@ -463,6 +464,22 @@ export function buildReport(
     });
   }
 
+  // --- Funil de Vendas por origem/canal (5 estágios, RevOps) ---
+  // Combina contacts (novos) + appointments (agendaram) + opps (visita,
+  // tat. agendada, converteram) com lastStageChangeAt no período. Ver
+  // apps/api/src/funnel.ts pra metodologia e skill `revenue-ops-funnel`.
+  const funnelByOrigin = buildFunnelByOrigin(
+    start,
+    end,
+    contacts,
+    filteredOpps,
+    appointmentEvents,
+    resolveOrigin,
+  );
+  // Os alertas do funil entram no report.alerts global pra aparecerem
+  // na seção 5 "Alertas e Observações" — mantém 1 lugar só de ação.
+  for (const a of funnelByOrigin.alerts) alerts.push(a);
+
   return {
     generatedAt: new Date().toISOString(),
     period: { start, end },
@@ -499,6 +516,7 @@ export function buildReport(
     adsMetrics,
     visitsByOrigin,
     appointments,
+    funnelByOrigin,
     vendasFunnel,
     revenueByDay,
     alerts,

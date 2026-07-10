@@ -215,6 +215,44 @@ export const AppointmentsBreakdownSchema = z.object({
 });
 export type AppointmentsBreakdown = z.infer<typeof AppointmentsBreakdownSchema>;
 
+// ---------- Funil de Vendas por origem/canal ----------
+// 5 estágios (RevOps canônico pra serviço agendado):
+//   novos      = contatos únicos no período (atribuídos ao canal)
+//   agendaram  = appointments no período com status new/confirmed/showed
+//                (≠ cancelled, ≠ invalid; 1 appt = 1 contagem)
+//   visita     = opps no pipeline Vendas com createdAt no período
+//                (visita = entrou no funil, independente de ter perdido depois)
+//   tatAgend   = opps com pipelineStageId = "Tatuagem agendada" E
+//                lastStageChangeAt no período (não createdAt — stage muda depois)
+//   converteram = opps em VENDAS_STAGE_WON com lastStageChangeAt no período
+//
+// Cada linha é um canal (sessionSource do contato, com fallback em
+// "Fonte do negócio" via resolveOrigin). O schema é flexível:
+// `steps` e `derived` ficam com nomes semânticos em vez de campos fixos,
+// pra não quebrar se um briefing futuro pedir 4 ou 6 estágios.
+export const FunnelOriginRowSchema = z.object({
+  origin: z.string(),                  // label do canal (Paid Social, CRM UI, ...)
+  steps: z.record(z.string(), z.number()),  // {"novos":N, "agendaram":N, ...}
+  stepRates: z.record(z.string(), z.number()), // 0..1, rate entre stages consecutivos
+  // 0..1, taxa sobre o topo do funil (1ª coluna) — o que CEO/marketing olham
+  absoluteRates: z.record(z.string(), z.number()),
+  // receita (R$) das convertidas NESSA linha do funil
+  receita: z.number(),
+});
+export type FunnelOriginRow = z.infer<typeof FunnelOriginRowSchema>;
+
+export const FunnelByOriginSchema = z.object({
+  // Ordem dos estágios no relatório (imutável, derivada do briefing)
+  stages: z.array(z.string()),  // ["novos","agendaram","visita","tatAgend","converteram"]
+  rows: z.array(FunnelOriginRowSchema),
+  // Totais (1ª coluna = volume, última = convertidos) — pra plotar o funil agregado
+  totals: FunnelOriginRowSchema,
+  // Alertas RevOps gerados a partir da estrutura do funil (ver
+  // skill `revenue-ops-funnel` §5). Severidade já mapeada pro pill do front.
+  alerts: z.array(AlertSchema),
+});
+export type FunnelByOrigin = z.infer<typeof FunnelByOriginSchema>;
+
 export const ReportSchema = z.object({
   generatedAt: z.string(),
   period: z.object({ start: z.string(), end: z.string() }),
@@ -240,6 +278,8 @@ export const ReportSchema = z.object({
   visitsByOrigin: OriginBreakdownSchema.optional(),
   // Agendamentos do período (status + origem) — widget do hero
   appointments: AppointmentsBreakdownSchema.optional(),
+  // Funil de Vendas por origem/canal — 5 estágios (RevOps canônico)
+  funnelByOrigin: FunnelByOriginSchema.optional(),
   // Novos campos para gráficos
   vendasFunnel: z.array(
     z.object({

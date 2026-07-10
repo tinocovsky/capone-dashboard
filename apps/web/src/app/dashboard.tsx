@@ -40,6 +40,10 @@ const AppointmentsPieChart = dynamic(
   () => import("@/components/charts/AppointmentsPieChart").then((m) => m.AppointmentsPieChart),
   { ssr: false, loading: () => <div style={{ height: 120 }} /> },
 );
+const FunnelByOrigin = dynamic(
+  () => import("@/components/charts/FunnelByOrigin").then((m) => m.FunnelByOrigin),
+  { ssr: false, loading: () => <div style={{ height: 200 }} /> },
+);
 
 // Cores das plataformas de ads (CSS vars do tema)
 const ADS_PLATFORMS = [
@@ -505,6 +509,26 @@ export default function Dashboard({
             </div>
             <OriginBars data={report.visitsByOrigin} />
           </div>
+
+          {/* ========================================================================
+              SEÇÃO: Funil de Vendas por origem/canal (5 estágios RevOps)
+              Posicionada entre Visitas por Origem (agregado) e Métricas de Ads (plataforma)
+              — preenche a lacuna "qual canal converte" e "em qual estágio vaza".
+              ========================================================================= */}
+          {report.funnelByOrigin && report.funnelByOrigin.rows.length > 0 && (
+            <>
+              <h2>Funil de Vendas por Origem</h2>
+              <div className="note">
+                5 estágios canônicos (RevOps): <strong>Novos</strong> → <strong>Agendaram</strong> (appts new/confirmed/showed) →{" "}
+                <strong>Visita</strong> (opps Vendas, createdAt) → <strong>Tat. agend.</strong> (stage "Tatuagem agendada",{" "}
+                <code>lastStageChangeAt</code>) → <strong>Converteram</strong> (won, <code>lastStageChangeAt</code>).{" "}
+                Em cada célula: <span style={{ color: "var(--green)" }}>verde</span> ≥50%, <span style={{ color: "var(--yellow)" }}>amarelo</span> 25-50%,{" "}
+                <span style={{ color: "var(--red)" }}>vermelho</span> &lt;25% do <em>stage</em> anterior. O número entre parênteses é % sobre o topo do funil.
+                Canal = <code>sessionSource</code> nativo do GHL, com fallback em <code>Fonte do negócio</code> quando vazio/CRM UI.
+              </div>
+              <FunnelByOrigin data={report.funnelByOrigin} />
+            </>
+          )}
 
           {/* ========================================================================
               SEÇÃO: Métricas de Ads (Meta / Google / TikTok)
