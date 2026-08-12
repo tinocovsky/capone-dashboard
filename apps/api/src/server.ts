@@ -1,40 +1,11 @@
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import pinoHttp from "pino-http";
-import pino from "pino";
+import app from "./app.js";
 import { env } from "./env.js";
-import { reports } from "./routes/reports.js";
+import pino from "pino";
 
-// Pino com destino stderr — sem transport "pino-pretty" (precisa dep extra).
-// Para logs coloridos em dev: `pnpm add -D pino-pretty` e descomentar o bloco abaixo.
 const log = pino(
   env.NODE_ENV === "development"
-    ? { transport: { target: "pino/file", options: { destination: 1 } } } // 1 = stdout
+    ? { transport: { target: "pino/file", options: { destination: 1 } } }
     : undefined,
 );
-const app = express();
-
-app.use(helmet());
-app.use(cors({ origin: env.CORS_ORIGIN.split(","), credentials: true }));
-app.use(express.json({ limit: "512kb" }));
-app.use(pinoHttp({ logger: log }));
-app.use(
-  rateLimit({
-    windowMs: 60_000,
-    limit: 60,
-    standardHeaders: "draft-7",
-    legacyHeaders: false,
-  }),
-);
-
-app.get("/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
-app.use("/api/reports", reports);
-
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  log.error({ err }, "unhandled error");
-  res.status(500).json({ error: "internal", message: err.message });
-});
 
 app.listen(env.PORT, () => log.info(`🟢 api em http://localhost:${env.PORT}`));

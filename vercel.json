@@ -1,16 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm -r run build",
+  "buildCommand": "pnpm --filter @capone/web run build",
   "installCommand": "pnpm install --frozen-lockfile",
   "builds": [
     {
-      "src": "apps/api/src/server.ts",
+      "src": "apps/web/next.config.mjs",
+      "use": "@vercel/next",
+      "config": { "rootDirectory": "apps/web" }
+    },
+    {
+      "src": "apps/api/src/vercel-handler.ts",
       "use": "@vercel/node",
       "config": { "maxDuration": 10 }
     }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "apps/api/src/server.ts" },
-    { "src": "/(.*)", "dest": "apps/web/$1" }
+    { "src": "/api/(.*)", "dest": "apps/api/src/vercel-handler.ts" }
   ]
 }
