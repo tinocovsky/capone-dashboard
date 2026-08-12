@@ -4,11 +4,6 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "builds": [
     {
-      "src": "apps/web/package.json",
-      "use": "@vercel/next",
-      "config": { "rootDirectory": "apps/web" }
-    },
-    {
       "src": "apps/api/src/vercel-handler.ts",
       "use": "@vercel/node",
       "config": { "maxDuration": 10 }
