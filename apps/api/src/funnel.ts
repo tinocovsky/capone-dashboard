@@ -1,12 +1,16 @@
 /**
  * Funil de Vendas por origem/canal — 5 estágios canônicos de RevOps.
+ * Agrega os pipelines Vendas + Pós-vendas (Pré-vendas, Prospecção e Barbearia
+ * ficam de fora). Pós-vendas entra como "won sempre" nos estágios finais.
  *
  *   1. novos       contatos únicos no período atribuídos ao canal
  *   2. agendaram   appointments no período (status new/confirmed/showed)
- *   3. visita      opps no pipeline Vendas com createdAt no período
+ *   3. visita      opps em Vendas OU Pós-vendas com createdAt no período
  *   4. tatAgend    opps com stage "Tatuagem agendada" (3cabe36c-...) e
- *                  lastStageChangeAt no período
- *   5. converteram opps em VENDAS_STAGE_WON com lastStageChangeAt no período
+ *                  lastStageChangeAt no período (só Vendas — Pós não tem esse stage)
+ *   5. converteram Vendas com stage ∈ VENDAS_STAGE_WON OU qualquer opp de
+ *                  Pós-vendas (won sempre), lastStageChangeAt no período.
+ *                  Soma monetaryValue dos dois lados.
  *
  * Cada canal vira uma linha. Taxa step (entre stages consecutivos) e taxa
  * absoluta (sobre o topo do funil) ficam em campos separados — RevOps olha
@@ -41,6 +45,11 @@ const VENDAS_STAGE_WON = new Set<string>([
   "2d790d25-30f6-4480-8e90-dcac1b007599", // Ganho
 ]);
 
+/** Funil agrega Vendas + Pós-vendas. Pré-vendas, Prospecção e Barbearia ficam fora. */
+function isTargetPipeline(id: string | null | undefined): boolean {
+  return id === env.GHL_PIPELINE_VENDAS || id === env.GHL_PIPELINE_POS_VENDAS;
+}
+
 const APPT_COUNTABLE_STATUSES = new Set(["new", "confirmed", "showed"]);
 
 const FUNNEL_STAGES = ["novos", "agendaram", "visita", "tatAgend", "converteram"] as const;
@@ -49,7 +58,7 @@ type StageName = (typeof FUNNEL_STAGES)[number];
 const STAGE_LABEL: Record<StageName, string> = {
   novos: "Novos contatos",
   agendaram: "Agendaram",
-  visita: "Realizaram visita",
+  visita: "Virou oportunidade",
   tatAgend: "Agendaram tatuagem",
   converteram: "Converteram",
 };
@@ -111,19 +120,21 @@ export function buildFunnelByOrigin(
     touch(origin).agendaram++;
   }
 
-  // 3) Visita: opp no pipeline Vendas, createdAt no período.
+  // 3) Visita: opp em Vendas OU Pós-vendas com createdAt no período.
   //    Não filtrar por stage — visita = "entrou no funil", mesmo que depois
-  //    tenha caído em Perdido (a perda foi num estágio posterior).
+  //    tenha caído em Perdido (a perda foi num estágio posterior). Inclui
+  //    pós-vendas porque é onde a "conversão" do funil se materializa.
   for (const o of opps) {
-    if (o.pipelineId !== env.GHL_PIPELINE_VENDAS) continue;
+    if (!isTargetPipeline(o.pipelineId)) continue;
     if (!inRange(o.createdAt, start, end)) continue;
     const origin = resolveOrigin(o.contactId);
     touch(origin).visita++;
   }
 
-  // 4) Agendaram tatuagem: stage = "Tatuagem agendada", lastStageChangeAt no período.
+  // 4) Agendaram tatuagem: stage = "Tatuagem agendada" (só Vendas), lastStageChangeAt no período.
   //    ⚠️ NÃO usar createdAt — a opp pode ter sido criada em jan e mudado de
   //    stage em mar. O evento é "passou pelo stage", não "nasceu".
+  //    Pós-vendas não tem esse stage — fica fora desse estágio.
   for (const o of opps) {
     if (o.pipelineId !== env.GHL_PIPELINE_VENDAS) continue;
     if (o.pipelineStageId !== TATUAGEM_AGENDADA_STAGE_ID) continue;
@@ -132,10 +143,14 @@ export function buildFunnelByOrigin(
     touch(origin).tatAgend++;
   }
 
-  // 5) Converteram: stage ∈ VENDAS_STAGE_WON, lastStageChangeAt no período.
+  // 5) Converteram: Vendas com stage ∈ VENDAS_STAGE_WON OU Pós-vendas (sempre won),
+  //    ambos com lastStageChangeAt no período. Soma receita dos dois.
   for (const o of opps) {
-    if (o.pipelineId !== env.GHL_PIPELINE_VENDAS) continue;
-    if (!o.pipelineStageId || !VENDAS_STAGE_WON.has(o.pipelineStageId)) continue;
+    if (!isTargetPipeline(o.pipelineId)) continue;
+    if (o.pipelineId === env.GHL_PIPELINE_VENDAS) {
+      if (!o.pipelineStageId || !VENDAS_STAGE_WON.has(o.pipelineStageId)) continue;
+    }
+    // Pós-vendas: qualquer stage conta como won (espelha a regra do report.ts).
     if (!inRange(o.lastStageChangeAt, start, end)) continue;
     const origin = resolveOrigin(o.contactId);
     const row = touch(origin);
@@ -204,7 +219,7 @@ export function buildFunnelByOrigin(
       alerts.push({
         severity: "warn",
         title: `Show rate baixo em "${r.origin}"`,
-        message: `Apenas ${(showRate * 100).toFixed(0)}% dos agendamentos viraram visita (${r.steps.visita}/${r.steps.agendaram}). Investigar reminder 24h e follow-up.`,
+        message: `Apenas ${(showRate * 100).toFixed(0)}% dos agendamentos viraram oportunidade (${r.steps.visita}/${r.steps.agendaram}). Investigar reminder 24h e follow-up.`,
       });
     }
     // Qualificação ruim (visita → tat. agendada) < 20%
@@ -213,7 +228,7 @@ export function buildFunnelByOrigin(
       alerts.push({
         severity: "warn",
         title: `Qualificação baixa em "${r.origin}"`,
-        message: `${(qualRate * 100).toFixed(0)}% das visitas viraram tatuagem agendada (${r.steps.tatAgend}/${r.steps.visita}). Closer pode precisar de treinamento.`,
+        message: `${(qualRate * 100).toFixed(0)}% das oportunidades viraram tatuagem agendada (${r.steps.tatAgend}/${r.steps.visita}). Closer pode precisar de treinamento.`,
       });
     }
     // Drop grande do agendado pra conversão (< 70% em volume relevante)

@@ -21,6 +21,15 @@ const EnvSchema = z.object({
   GHL_ARTIST_FIELD_ID: z.string().default("9XPhm85vxOYEyZ6yRB9N"),
   // Dono do negócio (closer) — fieldKey "opportunity.dono_do_negcio"
   GHL_DONO_NEGOCIO_FIELD_ID: z.string().default("c345zUnE33gH96uyEJI6"),
+  // Field key do custom field "Data da visita agendada" da opportunity. É o que
+  // define a qual mês a opp conta no relatório (não mais o createdAt/date_added).
+  // Default validado em jul/2026 na location C8d1LN8IL9XdN9kDkaF9.
+  // "Data da visita agendada" — custom field da OPORTUNIDADE (tipo DATE).
+  // ⚠️ /opportunities/search NUNCA retorna `fieldKey` no customFields, só `id`
+  // (confirmado contra a API real, jul/2026) — por isso é por ID, como todos
+  // os outros campos custom deste arquivo. ID confirmado via
+  // GET /locations/:id/customFields?model=opportunity.
+  GHL_FIELD_VISITA_AGENDADA_ID: z.string().default("kng1xVaPXj18RytedYHF"),
 
   // ---- Tracking de Ads (custom fields do GHL) ----
   // Esses IDs são os defaults da location C8d1LN8IL9XdN9kDkaF9 (jul/2026).
@@ -47,6 +56,23 @@ const EnvSchema = z.object({
   SUPABASE_URL: z.string().url(),
   // Service role aceita placeholder "unset" em dev — você configura depois.
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+
+  // ---- Google Ads API (gasto/cliques/CPC/CTR reais — o GHL não guarda isso) ----
+  // Todos opcionais: se algum faltar, o card de Google Ads simplesmente não
+  // mostra custo/cliques (comportamento atual, sem quebrar o relatório).
+  // GOOGLE_ADS_LOGIN_CUSTOMER_ID só é necessário se a conta for acessada via
+  // MCC (conta gerenciadora) — deixe vazio se for conta direta.
+  GOOGLE_ADS_DEVELOPER_TOKEN: z.string().optional(),
+  GOOGLE_ADS_CLIENT_ID: z.string().optional(),
+  GOOGLE_ADS_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_ADS_REFRESH_TOKEN: z.string().optional(),
+  GOOGLE_ADS_CUSTOMER_ID: z.string().optional(), // dígitos, sem hífen (ex: 1234567890)
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID: z.string().optional(),
+
+  // ---- Meta Marketing API (Facebook/Instagram Ads) ----
+  // System user token (longa duração) + ID da conta de anúncios (sem "act_").
+  META_AD_ACCOUNT_ID: z.string().optional(),
+  META_ACCESS_TOKEN: z.string().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

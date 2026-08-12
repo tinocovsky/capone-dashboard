@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import type { ArtistBySource, ContactsByDaySource, Report } from "@capone/shared";
 import { supabaseBrowser, authedFetch } from "@/lib/supabase-browser";
 import { exportPdf, exportCsv, shareLink } from "@/lib/export";
-import { fmtBRL, fmtPct, fmtCycle, fmtPeriod, fmtDateBR } from "@/lib/format";
+import { fmtBRL, fmtBRLPrecise, fmtPct, fmtPeriod, fmtDateBR } from "@/lib/format";
 import { SnapshotsPanel, type SnapshotMeta } from "@/components/SnapshotsPanel";
 import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
 
@@ -12,10 +12,6 @@ import { DateRangePicker, type DateRange } from "@/components/DateRangePicker";
 const ContactsByDayChart = dynamic(
   () => import("@/components/charts/ContactsByDayChart").then((m) => m.ContactsByDayChart),
   { ssr: false, loading: () => <div style={{ height: 140 }} /> },
-);
-const ContactsByOriginCard = dynamic(
-  () => import("@/components/charts/ContactsByOriginCard").then((m) => m.ContactsByOriginCard),
-  { ssr: false, loading: () => <div style={{ height: 280 }} /> },
 );
 const ArtistPerformanceChart = dynamic(
   () => import("@/components/charts/ArtistRevenueChart").then((m) => m.ArtistPerformanceChart),
@@ -428,106 +424,102 @@ export default function Dashboard({
       {report && (
         <>
           {/* ========================================================================
-              HERO — destaque em 1 tela com as 5 métricas-chave + funil + origem
+              HERO — destaque em 1 tela com os 4 KPIs-chave + Agendamentos (full-width)
               ========================================================================= */}
           <h2 style={{ marginTop: 8 }}>Visão Geral</h2>
-          <div className="hero">
-            {/* Lado esquerdo: 5 KPIs em destaque + barras de origem */}
-            <div className="hero-side" style={{ gap: 16 }}>
-              <div className="hero-kpis">
-                {/* 1. Total Vendido — HERO (ocupa 2 colunas) */}
-                <div className="hero-kpi primary green">
-                  <div className="accent-bar" />
-                  <div className="label">Total Vendido</div>
-                  <div className="val green">{fmtBRL(report.totals.receitaConvertida)}</div>
-                  <div className="sub">
-                    {report.totals.convertidas} convertidas • ticket médio {fmtBRL(report.totals.ticketMedio)}
-                  </div>
-                </div>
-                {/* 2. Taxa de Conversão */}
-                <div className={`hero-kpi ${rateClass(report.totals.taxaConversao)}`}>
-                  <div className="accent-bar" />
-                  <div className="label">Taxa de Conversão</div>
-                  <div className={`val ${rateClass(report.totals.taxaConversao)}`}>
-                    {fmtPct(report.totals.taxaConversao)}
-                  </div>
-                  <div className="sub">
-                    {report.totals.convertidas} conv / {report.totals.convertidas + report.totals.naoConvertidas} decididos
-                  </div>
-                </div>
-                {/* 3. Novos Contatos */}
-                <div className="hero-kpi purple">
-                  <div className="accent-bar" />
-                  <div className="label">Novos Contatos</div>
-                  <div className="val">{report.totals.novosContatos.toLocaleString("pt-BR")}</div>
-                  <div className="sub">{report.totals.oportunidades} viraram oportunidade</div>
-                </div>
-                {/* 4. Visitas por Origem (soma total) */}
-                {report.visitsByOrigin && (
-                  <div className="hero-kpi">
-                    <div className="accent-bar" />
-                    <div className="label">Visitas (oportunidades)</div>
-                    <div className="val">
-                      {Object.values(report.visitsByOrigin).reduce((s, b) => s + b.visitas, 0).toLocaleString("pt-BR")}
-                    </div>
-                    <div className="sub">no período</div>
-                  </div>
-                )}
-                {/* 5. Cycle time (mediana) */}
-                <div className="hero-kpi">
-                  <div className="accent-bar" />
-                  <div className="label">Cycle time</div>
-                  <div className="val">{fmtCycle(report.totals.cycleTimeMedianaDias)}</div>
-                  <div className="sub">mediana de fechamento</div>
-                </div>
-                {/* 6. Agendamentos — status + origem (calendários GHL) */}
-                {report.appointments && (
-                  <div className="hero-kpi wide">
-                    <div className="accent-bar" style={{ background: "var(--accent-2)" }} />
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8 }}>
-                      <div className="label">Agendamentos</div>
-                      <div className="val" style={{ fontSize: 24, marginTop: 0 }}>{report.appointments.total}</div>
-                      <div className="sub" style={{ marginTop: 0 }}>no período</div>
-                    </div>
-                    <AppointmentsPieChart data={report.appointments} />
-                  </div>
-                )}
+          <div className="hero-kpis" style={{ marginTop: 4 }}>
+            {/* 1. Total Vendido — HERO (ocupa 2 colunas) */}
+            <div className="hero-kpi primary green">
+              <div className="accent-bar" />
+              <div className="label">Total Vendido</div>
+              <div className="val green">{fmtBRL(report.totals.receitaConvertida)}</div>
+              <div className="sub">
+                {report.totals.convertidas} convertidas • ticket médio {fmtBRL(report.totals.ticketMedio)}
               </div>
             </div>
-
-            {/* Lado direito: contatos por origem no período — prioridade no hero
-                (substitui o funil de vendas, removido daqui). */}
-            <div className="hero-kpi" style={{ height: "100%" }}>
-              <div className="accent-bar" style={{ background: "var(--accent-2)" }} />
-              <div className="label">Contatos por Origem</div>
-              <div className="sub" style={{ marginBottom: 12 }}>{report.totals.novosContatos.toLocaleString("pt-BR")} no período</div>
-              {report.contactsByDaySource ? (
-                <ContactsByOriginCard data={report.contactsByDaySource} total={report.totals.novosContatos} />
-              ) : (
-                <div className="note">Disponível após recalcular o relatório (clique em &quot;Forçar refresh&quot;).</div>
-              )}
+            {/* 2. Ticket Médio */}
+            <div className="hero-kpi">
+              <div className="accent-bar" />
+              <div className="label">Ticket Médio</div>
+              <div className="val">{fmtBRL(report.totals.ticketMedio)}</div>
+              <div className="sub">por convertida</div>
             </div>
-          </div>
-
-          {/* Barras de origem (logo abaixo do hero) */}
-          <div style={{ marginTop: 16 }}>
-            <div className="note" style={{ borderLeftColor: "var(--accent-2)" }}>
-              <strong>Visitas por Origem</strong> — segregação por macro-origem do briefing (Artistas, Social Pago, Social Orgânico, Passante). A barra é proporcional ao total de visitas; o badge verde/amarelo/vermelho mostra a taxa de conversão.
+            {/* 3. Novos Contatos */}
+            <div className="hero-kpi purple">
+              <div className="accent-bar" />
+              <div className="label">Novos Contatos</div>
+              <div className="val">{report.totals.novosContatos.toLocaleString("pt-BR")}</div>
+              <div className="sub">no período</div>
             </div>
-            <OriginBars data={report.visitsByOrigin} />
+            {/* 4. Oportunidades */}
+            <div className="hero-kpi">
+              <div className="accent-bar" />
+              <div className="label">Oportunidades</div>
+              <div className="val">{report.totals.oportunidades.toLocaleString("pt-BR")}</div>
+              <div className="sub">{report.totals.convertidas} convertidas</div>
+            </div>
+            {/* Agendamentos — matriz origem × status (qual canal perde mais em no-show, etc.) */}
+            {report.appointments && (
+              <div className="hero-kpi wide">
+                <div className="accent-bar" style={{ background: "var(--accent-2)" }} />
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                  <div className="label">Agendamentos por origem × status</div>
+                  <div className="val" style={{ fontSize: 24, marginTop: 0 }}>{report.appointments.total}</div>
+                  <div className="sub" style={{ marginTop: 0 }}>no período</div>
+                </div>
+                <AppointmentsPieChart data={report.appointments} />
+              </div>
+            )}
           </div>
 
           {/* ========================================================================
-              SEÇÃO: Funil de Vendas por origem/canal (5 estágios RevOps)
-              Posicionada entre Visitas por Origem (agregado) e Métricas de Ads (plataforma)
-              — preenche a lacuna "qual canal converte" e "em qual estágio vaza".
+              SEÇÃO 1: NOVOS CONTATOS
+              Tudo que envolve aquisição / leads entra aqui, junto, sem repetição.
+              ========================================================================= */}
+          <h2>1. Novos Contatos</h2>
+          <div className="note">
+            <strong>Aquisição no período:</strong> {report.totals.novosContatos.toLocaleString("pt-BR")} novos contatos
+            {report.totals.oportunidades > 0 && (
+              <> • {report.totals.oportunidades.toLocaleString("pt-BR")} viraram oportunidade</>
+            )}.
+          </div>
+
+          <h3>1.1 Por dia — segregado por origem da sessão</h3>
+          {report.contactsByDaySource ? (
+            <>
+              <ContactsByDayChart data={report.contactsByDaySource} />
+              <DaySourceTable data={report.contactsByDaySource} totalContacts={report.totals.novosContatos} />
+            </>
+          ) : (
+            // snapshots antigos não têm a segregação por origem
+            <ReportTable labelHeader="Data" rows={report.contactsByDay.map((r) => ({ ...r, label: fmtDateBR(r.label) }))} />
+          )}
+
+          <h3>1.2 Por origem (sessão) — top 6 visualizado em pizza</h3>
+          <div className="row-2">
+            <OriginPieChart rows={report.contactsBySourceSession} />
+            <div style={{ alignSelf: "center" }}>
+              <OriginLegend rows={report.contactsBySourceSession} />
+            </div>
+          </div>
+          <h3>1.3 Por canal (meio)</h3>
+          <ReportTable rows={report.contactsByChannel} />
+          <h3>1.4 Cruzamento Sessão × Meio (top 10)</h3>
+          <ReportTable rows={report.sessionXChannel} />
+
+          {/* ========================================================================
+              SEÇÃO 2: OPORTUNIDADES
+              Funil por origem (5 estágios RevOps) + Ads (origem rastreada) + Performance
+              por Origem (macro) — tudo do "meio do funil" de leads → receita.
               ========================================================================= */}
           {report.funnelByOrigin && report.funnelByOrigin.rows.length > 0 && (
             <>
-              <h2>Funil de Vendas por Origem</h2>
+              <h2>2. Oportunidades</h2>
+
+              <h3>2.1 Funil de Vendas por Origem (5 estágios RevOps)</h3>
               <div className="note">
-                5 estágios canônicos (RevOps): <strong>Novos</strong> → <strong>Agendaram</strong> (appts new/confirmed/showed) →{" "}
-                <strong>Visita</strong> (opps Vendas, createdAt) → <strong>Tat. agend.</strong> (stage "Tatuagem agendada",{" "}
+                5 estágios canônicos: <strong>Novos</strong> → <strong>Agendaram</strong> (appts new/confirmed/showed) →{" "}
+                <strong>Virou oportunidade</strong> (opps Vendas, createdAt — não implica comparecimento) → <strong>Tat. agend.</strong> (stage &quot;Tatuagem agendada&quot;,{" "}
                 <code>lastStageChangeAt</code>) → <strong>Converteram</strong> (won, <code>lastStageChangeAt</code>).{" "}
                 O percentual em cada célula é <strong>sempre sobre o topo do funil</strong> (novos contatos do canal) — o briefing pediu essa referência fixa.{" "}
                 Cor semafórica calibrada por estágio:{" "}
@@ -540,59 +532,28 @@ export default function Dashboard({
             </>
           )}
 
-          {/* ========================================================================
-              SEÇÃO: Métricas de Ads (Meta / Google / TikTok)
-              ========================================================================= */}
-          {report.adsMetrics && (
-            <>
-              <h2>Métricas de Ads</h2>
-              <div className="note">
-                Origem dos leads por plataforma — classificados via <code>fbclid</code> (Meta), <code>gclid_id</code> (Google) e <code>utm_source</code> gravados no GHL. <strong>Custo/ROAS/CPA</strong> não estão disponíveis — o GHL não armazena investimento. Para preencher, suba CSVs mensais das plataformas ou integre Meta/Google Ads API.
-              </div>
-              <div className="ads-grid">
-                {ADS_PLATFORMS.map((p) => {
-                  const m = report.adsMetrics?.[p.key as keyof typeof report.adsMetrics];
-                  if (!m) return null;
-                  const isEmpty = m.visitas === 0 && m.oportunidades === 0;
-                  return (
-                    <div key={p.key} className={`ads-card ${isEmpty ? "empty" : ""}`}>
-                      <div className="platform">
-                        <span className="dot" style={{ background: p.color }} />
-                        {p.label}
-                      </div>
-                      <div className="stat-row"><span>Visitas</span><span className="v">{m.visitas.toLocaleString("pt-BR")}</span></div>
-                      <div className="stat-row"><span>Oportunidades</span><span className="v">{m.oportunidades.toLocaleString("pt-BR")}</span></div>
-                      <div className="stat-row"><span>Convertidas</span><span className="v">{m.convertidas.toLocaleString("pt-BR")}</span></div>
-                      <div className="stat-row"><span>Receita</span><span className="v" style={{ color: m.receita > 0 ? "var(--green)" : "var(--muted)" }}>{fmtBRL(m.receita)}</span></div>
-                      {m.custo == null && (
-                        <div className="no-cost">Custo / ROAS / CPA: não disponível no GHL</div>
-                      )}
-                      {m.custo != null && (
-                        <>
-                          <div className="stat-row"><span>Custo</span><span className="v">{fmtBRL(m.custo)}</span></div>
-                          <div className="stat-row"><span>ROAS</span><span className="v">{m.roas?.toFixed(2) ?? "—"}x</span></div>
-                          <div className="stat-row"><span>CPA</span><span className="v">{m.cpa ? fmtBRL(m.cpa) : "—"}</span></div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </>
+          <h3>{report.funnelByOrigin && report.funnelByOrigin.rows.length > 0 ? "2.2" : "2.1"} Performance por Origem (macro)</h3>
+          {report.visitsByOrigin && (
+            <div className="note" style={{ borderLeftColor: "var(--accent-2)" }}>
+              <strong>Oportunidades por Origem</strong> — segregação por macro-origem do briefing (Artistas, Social Pago, Social Orgânico, Passante). A barra é proporcional ao total de oportunidades; o badge verde/amarelo/vermelho mostra a taxa de conversão.
+            </div>
           )}
-
-          {/* ========================================================================
-              Seções numeradas
-              ========================================================================= */}
-          <h2>1. Performance por Origem (macro)</h2>
+          {report.visitsByOrigin && <OriginBars data={report.visitsByOrigin} />}
           <PerformanceTable rows={report.byOrigin} />
 
-          <h2>2. Performance por Artista</h2>
+          {/* ========================================================================
+              SEÇÃO 3: ARTISTAS
+              Performance do artista + origem dos clientes (clientes Capone vs clientes
+              do próprio artista). Tudo de artista fica aqui, contíguo.
+              ========================================================================= */}
+          <h2>3. Artistas</h2>
+
+          <h3>3.1 Performance por Artista</h3>
           <div className="note">Todos os artistas ativos no período (ao menos 1 lead decidido), ordenados por total vendido. Dois painéis com as mesmas linhas: à esquerda o <span style={{ color: "var(--cyan)" }}>total vendido</span> (escala R$); à direita os leads decididos (<span style={{ color: "var(--green)" }}>convertidos</span> + <span style={{ color: "var(--red)" }}>não convertidos</span> empilhados), com o % de conversão na ponta.</div>
           {report.byArtist.length > 0 && <ArtistPerformanceChart rows={report.byArtist} />}
           <PerformanceTable rows={report.byArtist} />
 
-          <h3>2.1 Artista × grupo de clientes</h3>
+          <h3>3.2 Artista × grupo de clientes</h3>
           <div className="note">
             <strong>Clientes Capone</strong> = leads com session source válido (Paid Social, Social media, etc.) ou com &quot;Fonte do negócio&quot; ≠ Artistas.{" "}
             <strong>Clientes dos Artistas</strong> = leads sem source (ou CRM UI) cuja oportunidade tem &quot;Fonte do negócio&quot; = Artistas.
@@ -610,47 +571,235 @@ export default function Dashboard({
             <div className="note">Disponível após recalcular o relatório (clique em &quot;Forçar refresh&quot;).</div>
           )}
 
-          <h2>3. Novos Contatos</h2>
-          <h3>3.1 Novos contatos por dia — segregado por origem da sessão</h3>
-          {report.contactsByDaySource ? (
-            <>
-              <ContactsByDayChart data={report.contactsByDaySource} />
-              <DaySourceTable data={report.contactsByDaySource} totalContacts={report.totals.novosContatos} />
-            </>
-          ) : (
-            // snapshots antigos não têm a segregação por origem
-            <ReportTable labelHeader="Data" rows={report.contactsByDay.map((r) => ({ ...r, label: fmtDateBR(r.label) }))} />
-          )}
-
-          <h3>3.2 Por origem (sessão) — top 6 visualizado em pizza</h3>
-          <div className="row-2">
-            <OriginPieChart rows={report.contactsBySourceSession} />
-            <div style={{ alignSelf: "center" }}>
-              <OriginLegend rows={report.contactsBySourceSession} />
-            </div>
-          </div>
-          <h3>3.3 Por canal (meio)</h3>
-          <ReportTable rows={report.contactsByChannel} />
-          <h3>3.4 Cruzamento Sessão × Meio (top 10)</h3>
-          <ReportTable rows={report.sessionXChannel} />
-          <h3>3.5 Landing pages (top 10)</h3>
-          <table>
-            <thead><tr><th>Landing Page</th><th className="num">Visitas (contatos)</th></tr></thead>
-            <tbody>{report.topLandingPages.map((r) => <tr key={r.label}><td className="url-cell">{r.label}</td><td className="num">{r.count}</td></tr>)}</tbody>
-          </table>
-          <h3>3.6 Ad IDs (top 10)</h3>
-          <table>
-            <thead><tr><th>Ad ID</th><th className="num">Contatos</th></tr></thead>
-            <tbody>{report.topAdIds.map((r) => <tr key={r.label}><td className="url-cell">{r.label}</td><td className="num">{r.count}</td></tr>)}</tbody>
-          </table>
-          <h3>3.7 Source legado (top 10)</h3>
-          <ReportTable rows={report.topLegacySources} />
-
+          {/* ========================================================================
+              SEÇÃO 4: SDRs (responsáveis pelas oportunidades)
+              ========================================================================= */}
           <h2>4. Performance por SDR</h2>
           <div className="note">SDR = campo <strong>&quot;Dono do negócio&quot;</strong> da oportunidade no GHL.</div>
           <PerformanceTable rows={report.bySdr} />
 
-          <h2>5. Alertas e Observações</h2>
+          {/* ========================================================================
+              SEÇÃO 5: Ads & Mídia Paga
+              Tudo de ads (origem rastreada, custo de plataformas, eficiência) — fica
+              numa seção só, depois de SDR, pra não poluir o funil de Vendas/Contatos.
+              ========================================================================= */}
+          {report.adsMetrics && (
+            <>
+              <h2>5. Ads & Mídia Paga</h2>
+              <div className="note">
+                Cliques, gasto, CPC e CTR reais vêm direto da Google Ads API / Meta Marketing API — o GHL não guarda investimento. Contatos/oportunidades/conversões continuam vindo do rastreamento do GHL (<code>fbclid</code>/<code>gclid_id</code>/<code>utm_source</code>).{" "}
+                Definições de aquisição: <strong>MQL</strong> = lead que virou oportunidade; <strong>CPL/CPMQL/CAC globais</strong> são <em>blended</em> — investimento total em ads ÷ todos os leads/MQLs/clientes do período (inclusive orgânico e artistas); por plataforma, dividem o custo da plataforma pelos números atribuídos a ela.
+              </div>
+
+              {/* 5.1 Eficiência de aquisição — só renderiza quando há custo real de alguma plataforma */}
+              {report.acquisition && report.acquisition.plataformasComCusto.length > 0 && (
+                <>
+                  <h3>5.1 Eficiência de aquisição (blended)</h3>
+                  <div className="acq-grid">
+                    <div className="ads-report-card" style={{ borderColor: "var(--cyan)" }}>
+                      <div className="ads-report-stats" style={{ gridTemplateColumns: "1fr" }}>
+                        <div>
+                          <div className="label">CAC Global</div>
+                          <div className="val" style={{ color: "var(--cyan)" }}>
+                            {report.acquisition.cacGlobal != null ? fmtBRLPrecise(report.acquisition.cacGlobal) : "—"}
+                          </div>
+                          <div className="sub">investimento ÷ {report.acquisition.clientes} clientes convertidos</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="ads-report-card">
+                      <div className="ads-report-stats" style={{ gridTemplateColumns: "1fr" }}>
+                        <div>
+                          <div className="label">CPL Global</div>
+                          <div className="val">
+                            {report.acquisition.cplGlobal != null ? fmtBRLPrecise(report.acquisition.cplGlobal) : "—"}
+                          </div>
+                          <div className="sub">investimento ÷ {report.acquisition.leads.toLocaleString("pt-BR")} leads</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="ads-report-card">
+                      <div className="ads-report-stats" style={{ gridTemplateColumns: "1fr" }}>
+                        <div>
+                          <div className="label">CPMQL Global</div>
+                          <div className="val">
+                            {report.acquisition.cpmqlGlobal != null ? fmtBRLPrecise(report.acquisition.cpmqlGlobal) : "—"}
+                          </div>
+                          <div className="sub">investimento ÷ {report.acquisition.mqls} MQLs (viraram oportunidade)</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="ads-report-card">
+                      <div className="ads-report-stats" style={{ gridTemplateColumns: "1fr" }}>
+                        <div>
+                          <div className="label">Investimento Total</div>
+                          <div className="val">{fmtBRL(report.acquisition.investimentoTotal)}</div>
+                          <div className="sub">
+                            ads no período ({report.acquisition.plataformasComCusto.map((p) => p === "google" ? "Google" : p === "facebook" ? "Meta" : p).join(" + ")})
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* 5.2 Relatórios de plataforma — só renderiza se há custo real de Google ou Meta */}
+              {(report.adsMetrics.google.custo != null || report.adsMetrics.facebook.custo != null) ? (
+                <>
+                  <h3>5.2 Relatórios de plataforma (cliques, gasto, CPC/CTR reais)</h3>
+                  <div className="ads-report-grid">
+                    {report.adsMetrics.google.custo != null && (
+                      <div className="ads-report-card">
+                        <div className="title">Relatório do Google Ads</div>
+                        <div className="ads-report-stats">
+                          <div>
+                            <div className="label">Total de cliques</div>
+                            <div className="val">{report.adsMetrics.google.cliques?.toLocaleString("pt-BR") ?? "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">Valor total gasto</div>
+                            <div className="val">{fmtBRL(report.adsMetrics.google.custo)}</div>
+                          </div>
+                          <div>
+                            <div className="label">CPC</div>
+                            <div className="val">{report.adsMetrics.google.cpc != null ? fmtBRLPrecise(report.adsMetrics.google.cpc) : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">CTR</div>
+                            <div className="val">{report.adsMetrics.google.ctr != null ? fmtPct(report.adsMetrics.google.ctr) : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">CPL</div>
+                            <div className="val">{report.adsMetrics.google.cpl != null ? fmtBRLPrecise(report.adsMetrics.google.cpl) : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">CPMQL</div>
+                            <div className="val">{report.adsMetrics.google.cpmql != null ? fmtBRLPrecise(report.adsMetrics.google.cpmql) : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">CAC</div>
+                            <div className="val">{report.adsMetrics.google.cpa != null ? fmtBRLPrecise(report.adsMetrics.google.cpa) : "—"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {report.adsMetrics.facebook.custo != null && (
+                      <div className="ads-report-card">
+                        <div className="title">Relatório de Anúncios do Facebook</div>
+                        <div className="ads-report-stats">
+                          <div>
+                            <div className="label">Total de cliques</div>
+                            <div className="val">{report.adsMetrics.facebook.cliques?.toLocaleString("pt-BR") ?? "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">Valor total gasto</div>
+                            <div className="val">{fmtBRL(report.adsMetrics.facebook.custo)}</div>
+                          </div>
+                          <div>
+                            <div className="label">CPC</div>
+                            <div className="val">{report.adsMetrics.facebook.cpc != null ? fmtBRLPrecise(report.adsMetrics.facebook.cpc) : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">CTR</div>
+                            <div className="val">{report.adsMetrics.facebook.ctr != null ? fmtPct(report.adsMetrics.facebook.ctr) : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">CPL</div>
+                            <div className="val">{report.adsMetrics.facebook.cpl != null ? fmtBRLPrecise(report.adsMetrics.facebook.cpl) : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">CPMQL</div>
+                            <div className="val">{report.adsMetrics.facebook.cpmql != null ? fmtBRLPrecise(report.adsMetrics.facebook.cpmql) : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="label">CAC</div>
+                            <div className="val">{report.adsMetrics.facebook.cpa != null ? fmtBRLPrecise(report.adsMetrics.facebook.cpa) : "—"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="note" style={{ borderLeftColor: "var(--yellow)" }}>
+                  Cliques/gasto/CPC/CTR reais ainda não configurados. Defina as credenciais da Google Ads API e/ou Meta Marketing API no <code>.env</code> da API — ver comentários em <code>apps/api/src/env.ts</code>.
+                </div>
+              )}
+
+              {/* 5.3 Performance por plataforma — sempre visível (volume do GHL, custo opcional via API) */}
+              <h3>5.3 Performance por plataforma</h3>
+              <div className="ads-grid">
+                {ADS_PLATFORMS.map((p) => {
+                  const m = report.adsMetrics?.[p.key as keyof typeof report.adsMetrics];
+                  if (!m) return null;
+                  const isEmpty = m.visitas === 0 && m.oportunidades === 0;
+                  return (
+                    <div key={p.key} className={`ads-card ${isEmpty ? "empty" : ""}`}>
+                      <div className="platform">
+                        <span className="dot" style={{ background: p.color }} />
+                        {p.label}
+                      </div>
+                      <div className="stat-row"><span>Contatos</span><span className="v">{m.visitas.toLocaleString("pt-BR")}</span></div>
+                      <div className="stat-row"><span>Oportunidades</span><span className="v">{m.oportunidades.toLocaleString("pt-BR")}</span></div>
+                      <div className="stat-row"><span>Convertidas</span><span className="v">{m.convertidas.toLocaleString("pt-BR")}</span></div>
+                      <div className="stat-row"><span>Receita</span><span className="v" style={{ color: m.receita > 0 ? "var(--green)" : "var(--muted)" }}>{fmtBRL(m.receita)}</span></div>
+                      {m.custo == null && (
+                        <div className="no-cost">Custo / ROAS / CPA: não disponível no GHL</div>
+                      )}
+                      {m.custo != null && (
+                        <>
+                          <div className="stat-row"><span>Custo</span><span className="v">{fmtBRL(m.custo)}</span></div>
+                          <div className="stat-row"><span>ROAS</span><span className="v">{m.roas?.toFixed(2) ?? "—"}x</span></div>
+                          <div className="stat-row"><span>CAC</span><span className="v">{m.cpa ? fmtBRL(m.cpa) : "—"}</span></div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* 5.4–5.6: tabelas de origem que ajudam a auditar campanhas de ads.
+              Não dependem de adsMetrics (são listagens de contatos), então ficam
+              fora do bloco `report.adsMetrics && (...)` acima. */}
+          <h3>5.4 Landing pages (top 10)</h3>
+          <div className="note" style={{ marginTop: 4 }}>
+            Páginas de destino que geraram contatos. A maioria vem de campanhas pagas (Meta/Google Ads); orgânico aparece com volume residual.
+          </div>
+          {report.topLandingPages.length > 0 ? (
+            <table>
+              <thead><tr><th>Landing Page</th><th className="num">Visitas (contatos)</th></tr></thead>
+              <tbody>{report.topLandingPages.map((r) => <tr key={r.label}><td className="url-cell">{r.label}</td><td className="num">{r.count}</td></tr>)}</tbody>
+            </table>
+          ) : (
+            <div className="note">Sem dados de landing pages no período.</div>
+          )}
+
+          <h3>5.5 Ad IDs (top 10)</h3>
+          <div className="note" style={{ marginTop: 4 }}>
+            IDs dos anúncios que trouxeram contatos. Cruzando com o gasto de cada ad (Meta/Google Ads) dá o CPA real por criativo.
+          </div>
+          {report.topAdIds.length > 0 ? (
+            <table>
+              <thead><tr><th>Ad ID</th><th className="num">Contatos</th></tr></thead>
+              <tbody>{report.topAdIds.map((r) => <tr key={r.label}><td className="url-cell">{r.label}</td><td className="num">{r.count}</td></tr>)}</tbody>
+            </table>
+          ) : (
+            <div className="note">Sem dados de ad IDs no período.</div>
+          )}
+
+          <h3>5.6 Source legado (top 10)</h3>
+          <div className="note" style={{ marginTop: 4 }}>
+            Versão antiga do campo <code>source</code> do contato (GHL v1). Útil pra auditar leads que entraram antes do tracking novo (UTM/fbclid/gclid) ser ativado.
+          </div>
+          <ReportTable rows={report.topLegacySources} />
+
+          {/* ========================================================================
+              SEÇÃO 6: Alertas e Observações
+              ========================================================================= */}
+          <h2>6. Alertas e Observações</h2>
           <div className="callout">
             <ul className="tight">
               {report.alerts.map((a, i) => {
@@ -664,6 +813,102 @@ export default function Dashboard({
               })}
               {report.alerts.length === 0 && <li>Sem alertas críticos no período.</li>}
             </ul>
+          </div>
+
+          {/* ========================================================================
+              SEÇÃO 7: Glossário
+              Termos do funil Capone (GHL) + métricas do dashboard.
+              ========================================================================= */}
+          <h2>7. Glossário</h2>
+          <div className="note" style={{ marginBottom: 12 }}>
+            Termos usados neste relatório. Mantido curto — só o que afeta interpretação dos números.
+          </div>
+          <div className="cards" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            <div className="card">
+              <div className="label">Pipeline de Vendas (GHL)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                Funil principal onde a oportunidade nasce. 6 stages:
+                <strong> Simulação realizada</strong> → <strong>Sinal</strong> → <strong>Sinal Pago</strong> → <strong>Tatuagem agendada</strong> → <strong>Ganho</strong> → <strong>Perdido</strong>.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Pipeline Pós-vendas (GHL)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                Onde a tatuagem é executada. 8 stages (M1..M8). <strong>Tudo conta como convertido</strong> — o cliente já pagou, é só a execução da tattoo.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Convertida (won)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                Oportunidade com stage <em>Ganho</em>, <em>Sinal Pago</em> ou <em>Tatuagem agendada</em> (Vendas) ou qualquer stage M1..M8 (Pós-vendas). Ganha receita.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Não convertida (lost)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                Stage <em>Perdido</em>, <em>Simulação realizada</em> ou <em>Sinal</em> (Vendas). <strong>Critério rígido</strong>: só conta quando o cliente fala explicitamente &quot;não tenho interesse&quot;. Leads em aberto (open) não viram lost.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Taxa de conversão</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                <code>convertidas ÷ decididas</code>, onde <em>decididas</em> = convertidas + não convertidas. Open (em andamento) não entra no denominador.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Ticket médio</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                <code>receita convertida ÷ número de convertidas</code>. Valor médio por tatuagem fechada.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Macro-origem (briefing)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                4 buckets canônicos: <strong>Artistas</strong>, <strong>Social Pago</strong>, <strong>Social Orgânico</strong>, <strong>Passante</strong>. Vem do custom field <code>Fonte do negócio</code> (id <code>Z9V5sduzueNFxPbqtqGh</code>).
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Session source (sessão)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                Como o contato chegou: <em>Paid Social</em>, <em>Paid Search</em>, <em>Social media</em>, <em>Organic Search</em>, <em>Direct traffic</em>, <em>CRM UI</em>. Valor nativo do GHL no contato.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Show rate (agendamento)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                <code>compareceu ÷ total agendado da origem</code>. Semafórico: verde ≥70%, amarelo 40–70%, vermelho &lt;40%.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Funil de Vendas por Origem (5 estágios)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                RevOps canônico: <strong>Novos</strong> → <strong>Agendaram</strong> → <strong>Virou oportunidade</strong> → <strong>Tat. agend.</strong> → <strong>Converteram</strong>. % de cada célula é sempre sobre o topo (novos do canal).
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">MQL (Marketing Qualified Lead)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                Contato que virou oportunidade no funil de Vendas. Usado pra calcular <strong>CPMQL</strong> (custo ÷ MQLs) e <strong>CAC</strong> (custo ÷ clientes).
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">SDR (&quot;Dono do negócio&quot;)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                Responsável pela oportunidade no GHL. Custom field da opportunity que identifica o vendedor/closer.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Tracking de ads (fbclid/gclid/utm)</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                <code>fbclid</code> = Meta Ads · <code>gclid_id</code> = Google Ads · <code>utm_source</code> = heurística. Cobertura &lt;10% aciona alerta de pixel/conector quebrado.
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">Excluído: Arlon</div>
+              <div className="sub" style={{ color: "var(--ink)", lineHeight: 1.6, marginTop: 6 }}>
+                Artista removido do relatório por regra de negócio (não contabilizado nos totais nem nos rankings).
+              </div>
+            </div>
           </div>
 
           <div className="footer">

@@ -25,16 +25,18 @@ import type {
   OriginBreakdown,
 } from "@capone/shared";
 import { env } from "./env.js";
-import { aggregateAdsMetrics, aggregateVisitsByOrigin, classifyMacroOrigin, originRowsFromBreakdown, adsTrackingCoverage } from "./ads.js";
+import { aggregateAdsMetrics, aggregateVisitsByOrigin, applyAdSpend, classifyMacroOrigin, computeAcquisition, originRowsFromBreakdown, adsTrackingCoverage } from "./ads.js";
+import type { AdSpend } from "./googleAds.js";
 import { buildFunnelByOrigin } from "./funnel.js";
 
 const EXCLUDED_ARTIST = "arlon";
 
-/** Pipeline Vendas: 6 stages, classificados conforme regra do briefing */
+/** Pipeline Vendas: 6 stages, classificados conforme regra de receita (jul/2026+).
+ *  Won = visita marcada ou fechada: "Tatuagem agendada" + "Ganho".
+ *  "Sinal Pago" NÃO conta (a visita pode nem ter rolado — não é receita). */
 const VENDAS_STAGE_WON = new Set<string>([
   "3cabe36c-eb9b-4313-9147-d79a3122a28f", // Tatuagem agendada
   "2d790d25-30f6-4480-8e90-dcac1b007599", // Ganho
-  "1a75ea4a-7d0e-4559-9288-fb09d5826653", // Sinal Pago
 ]);
 const VENDAS_STAGE_LOST = new Set<string>([
   "2ba6b554-1bf2-48b7-8498-8b92735231f6", // Simulação realizada
@@ -63,10 +65,13 @@ function dayKey(iso: string): string {
 
 type CField = {
   id: string;
+  fieldKey?: string | null;
   fieldValueString?: string | null;
   fieldValueNumber?: number | null;
   fieldValueArray?: string[] | null;
-  fieldValueDate?: number | null;
+  // GHL retorna data como ISO string ("2026-07-15") ou ISO datetime com Z; alguns
+  // endpoints legados retornam unix ms. Aceitamos ambos e normalizamos.
+  fieldValueDate?: string | number | null;
   // legado (alguns endpoints antigos retornam "value")
   value?: unknown;
 };
@@ -81,7 +86,11 @@ function pickCustom(customFields: readonly Row[] | undefined, id: string): strin
   if (f.fieldValueString != null && f.fieldValueString !== "") return f.fieldValueString;
   if (typeof f.fieldValueNumber === "number") return String(f.fieldValueNumber);
   if (f.fieldValueArray && f.fieldValueArray.length > 0) return f.fieldValueArray.join(", ");
-  if (typeof f.fieldValueDate === "number") return new Date(f.fieldValueDate).toISOString().slice(0, 10);
+  if (f.fieldValueDate != null) {
+    // string ISO (2026-07-15 ou 2026-07-15T03:00:00.000Z) ou número (unix ms)
+    if (typeof f.fieldValueDate === "string") return f.fieldValueDate.slice(0, 10);
+    return new Date(f.fieldValueDate).toISOString().slice(0, 10);
+  }
   if (f.value != null) return String(f.value);
   return null;
 }
@@ -107,6 +116,9 @@ export function buildReport(
   // Contatos de agendamentos/opps que foram criados FORA do período (buscados à
   // parte só pra classificar origem) — não entram em novosContatos nem nas seções de contatos.
   extraContacts: GhlContact[] = [],
+  // Gasto real de Google/Meta Ads do período (buscado à parte, em paralelo,
+  // por não vir do GHL). Ausente/null por plataforma = card sem custo, como antes.
+  adSpend: { google?: AdSpend | null; facebook?: AdSpend | null } = {},
 ): Report {
   // --- Filtra artista excluído ---
   const filteredOpps = opps.filter((o) => {
@@ -115,7 +127,12 @@ export function buildReport(
   });
 
   // --- Totais básicos ---
-  // Decide o status final de cada opp baseado no stageId (não em o.status que é sempre "open" no GHL)
+  // Decide o status final de cada opp baseado no pipeline + stageId.
+  // Regra de receita (jul/2026+): conta como won o que REALMENTE virou receita —
+  //   - Vendas: stages "Tatuagem agendada" ou "Ganho" (visita marcada ou fechada).
+  //     "Sinal Pago" NÃO conta mais (a visita pode nem ter rolado).
+  //   - Pós-vendas: qualquer stage (a tattoo foi executada, é receita realizada).
+  // Stages "Simulação" / "Sinal" continuam como lost (cliente desistiu no meio).
   const classified = filteredOpps.map((o) => {
     let won = false, lost = false;
     if (o.pipelineId === env.GHL_PIPELINE_VENDAS) {
@@ -434,25 +451,68 @@ export function buildReport(
     revenueByDay.push({ date: d, receita: r, acumulado: acc });
   }
 
-  // --- Agendamentos (status + origem do CONTATO) ---
+  // --- Agendamentos (status + origem do CONTATO + matriz origem × status) ---
   // Origem = attributionSource.sessionSource do contato agendado (Paid Social,
   // Paid Search, Social media, CRM UI, ...), igual à seção "Por origem (sessão)".
   const apptStatus = new Map<string, number>();
   const apptOrigin = new Map<string, number>();
+  // Matriz origem × status (cada origem tem um Map<status, count>)
+  const apptMatrix = new Map<string, Map<string, number>>();
   for (const a of appointmentEvents) {
-    inc(apptStatus, a.appointmentStatus || "(sem status)");
-    inc(apptOrigin, resolveOrigin(a.contactId));
+    const status = a.appointmentStatus || "(sem status)";
+    const origin = resolveOrigin(a.contactId);
+    inc(apptStatus, status);
+    inc(apptOrigin, origin);
+    let row = apptMatrix.get(origin);
+    if (!row) { row = new Map(); apptMatrix.set(origin, row); }
+    inc(row, status);
   }
+  // Listas ordenadas (mesma ordem de byStatus e byOrigin — toRows ordena por count desc)
+  const statusOrder = toRows(apptStatus, appointmentEvents.length).map((r) => r.label);
+  const originOrder = toRows(apptOrigin, appointmentEvents.length).map((r) => r.label);
+  // Achata pra JSON-serializable: { "Paid Social": { "showed": 12, "noshow": 3, ... } }
+  const matrix: Record<string, Record<string, number>> = {};
+  const rowTotals: Record<string, number> = {};
+  for (const origin of originOrder) {
+    const row = apptMatrix.get(origin) ?? new Map<string, number>();
+    matrix[origin] = {};
+    let total = 0;
+    for (const status of statusOrder) {
+      const c = row.get(status) ?? 0;
+      matrix[origin][status] = c;
+      total += c;
+    }
+    rowTotals[origin] = total;
+  }
+  const colTotals: Record<string, number> = {};
+  for (const status of statusOrder) colTotals[status] = apptStatus.get(status) ?? 0;
   const appointments: AppointmentsBreakdown = {
     total: appointmentEvents.length,
     byStatus: toRows(apptStatus, appointmentEvents.length),
     byOrigin: toRows(apptOrigin, appointmentEvents.length),
+    byOriginStatus: {
+      origins: originOrder,
+      statuses: statusOrder,
+      matrix,
+      rowTotals,
+      colTotals,
+    },
   };
 
   // --- Métricas de Ads (Meta/Google/TikTok/Orgânico/Outros) e Visitas por Origem ---
   // Ambos derivados de classified (lista já com won/lost) + contacts (pra fbclid/gclid).
-  const adsMetrics: AdsMetrics = aggregateAdsMetrics(contacts, classified);
+  const adsMetricsBase: AdsMetrics = aggregateAdsMetrics(contacts, classified);
+  const adsMetrics: AdsMetrics = applyAdSpend(adsMetricsBase, adSpend);
   const visitsByOrigin: OriginBreakdown = aggregateVisitsByOrigin(classified);
+
+  // --- Eficiência de aquisição (CAC global, CPL, CPMQL — blended) ---
+  // leads = todos os novos contatos; MQL = virou oportunidade; clientes = convertidas.
+  const acquisition = computeAcquisition(
+    adsMetrics,
+    contacts.length,
+    filteredOpps.length,
+    converted.length,
+  );
 
   // Alerta: baixa cobertura de tracking de ads (utm/fbclid/gclid vazios na maioria)
   const cov = adsTrackingCoverage(adsMetrics);
@@ -516,6 +576,7 @@ export function buildReport(
     adsMetrics,
     visitsByOrigin,
     appointments,
+    acquisition,
     funnelByOrigin,
     vendasFunnel,
     revenueByDay,

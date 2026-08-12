@@ -3,7 +3,9 @@
  * Funil de Vendas por origem/canal — 5 estágios RevOps:
  *   novos       contatos únicos no período
  *   agendaram   appointments com status new/confirmed/showed
- *   visita      opps no pipeline Vendas com createdAt no período
+ *   visita      (rotulado "Virou oportunidade" na UI — o nome interno "visita" é
+ *               enganoso: NÃO significa comparecimento físico, só que a opp foi
+ *               criada) opps no pipeline Vendas com createdAt no período
  *   tatAgend    opps no stage "Tatuagem agendada" (lastStageChangeAt)
  *   converteram opps em VENDAS_STAGE_WON (lastStageChangeAt)
  *
@@ -25,7 +27,7 @@ import { fmtBRL, fmtPct } from "@/lib/format";
 const STAGE_LABEL: Record<string, string> = {
   novos: "Novos",
   agendaram: "Agendaram",
-  visita: "Visita",
+  visita: "Virou oportunidade",
   tatAgend: "Tat. agend.",
   converteram: "Converteram",
 };

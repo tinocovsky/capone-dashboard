@@ -8,6 +8,11 @@ export const fmtBRL = (v: number) =>
 
 export const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
+/** Moeda com 2 casas — fmtBRL arredonda pra inteiro, o que zera valores como
+ *  CPC (tipicamente < R$1). Usar só onde a precisão de centavos importa. */
+export const fmtBRLPrecise = (v: number) =>
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 /** Cycle time legível: < 1h em minutos, < 1 dia em horas, senão em dias. */
 export function fmtCycle(days: number): string {
   if (days <= 0) return "0d";

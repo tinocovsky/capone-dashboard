@@ -70,7 +70,26 @@ export const GhlOpportunitySchema = z.object({
   lastStageChangeAt: z.string().optional().nullable(),
   lastStatusChangeAt: z.string().optional().nullable(),
   contactId: z.string().optional().nullable(),
-  customFields: z.array(z.object({ id: z.string() }).passthrough()).optional().default([]),
+  customFields: z
+    .array(
+      z
+        .object({
+          id: z.string(),
+          // ⚠️ /opportunities/search NUNCA retorna `fieldKey` no customFields — só
+          // `id` (confirmado contra a API real, jul/2026). Todo filtro por custom
+          // field de opportunity (inclusive "Data da visita agendada") é por `id`.
+          // `fieldKey` fica tipado aqui só por segurança caso a API mude no futuro.
+          fieldKey: z.string().optional().nullable(),
+          fieldValueString: z.string().optional().nullable(),
+          fieldValueNumber: z.number().optional().nullable(),
+          // GHL retorna epoch ms (number) pra campos DATE — confirmado contra a API
+          // real (jul/2026). Aceita string também por segurança (não custa nada).
+          fieldValueDate: z.union([z.string(), z.number()]).optional().nullable(),
+        })
+        .passthrough(),
+    )
+    .optional()
+    .default([]),
   assignedTo: z.string().optional().nullable(),
   status: z.string().optional().nullable(),
   monetaryValue: z.number().optional().nullable(),
@@ -152,10 +171,31 @@ export const AdsPlatformMetricsSchema = z.object({
   convertidas: z.number(),        // opps ganhas
   receita: z.number(),            // receita convertida (R$)
   custo: z.number().nullable(),   // investimento em ads (R$) — null = sem dado
+  cliques: z.number().nullable(), // total de cliques no período — null = sem dado
+  cpc: z.number().nullable(),     // custo por clique (R$) — null se custo/cliques ausente
+  ctr: z.number().nullable(),     // click-through rate, 0..1 — null se sem dado
   roas: z.number().nullable(),    // receita / custo — null se custo ausente
-  cpa: z.number().nullable(),     // custo / convertidas — null se custo ausente
+  cpa: z.number().nullable(),     // custo / convertidas — exibido como "CAC" na UI
+  cpl: z.number().nullable(),     // custo / leads (visitas) — null se custo ausente
+  cpmql: z.number().nullable(),   // custo / oportunidades (MQL = virou opp) — null se custo ausente
 });
 export type AdsPlatformMetrics = z.infer<typeof AdsPlatformMetricsSchema>;
+
+// ---------- Eficiência de aquisição (globais blended) ----------
+// Investimento = só gasto em ads (plataformas com custo disponível via API).
+// MQL = lead que virou oportunidade. CPL/CAC globais são blended: dividem o
+// investimento total por TODOS os leads/clientes do período (inclusive orgânico).
+export const AcquisitionSchema = z.object({
+  investimentoTotal: z.number(),            // soma dos custos das plataformas com dado
+  plataformasComCusto: z.array(z.string()), // ex.: ["google","facebook"] — cobertura do investimento
+  leads: z.number(),                        // totals.novosContatos
+  mqls: z.number(),                         // totals.oportunidades (MQL = virou opp)
+  clientes: z.number(),                     // totals.convertidas
+  cplGlobal: z.number().nullable(),
+  cpmqlGlobal: z.number().nullable(),
+  cacGlobal: z.number().nullable(),
+});
+export type Acquisition = z.infer<typeof AcquisitionSchema>;
 
 export const AdsMetricsSchema = z.object({
   facebook: AdsPlatformMetricsSchema,
@@ -212,6 +252,16 @@ export const AppointmentsBreakdownSchema = z.object({
   total: z.number(),
   byStatus: z.array(CountRowSchema),  // label = status cru do GHL (confirmed, noshow, ...)
   byOrigin: z.array(CountRowSchema),  // label = sessionSource do CONTATO (Paid Social, CRM UI, ...)
+  // Matriz origem × status: cada origem é uma chave, cada valor é { [status]: count }.
+  // Inclui `origins` e `statuses` (listas ordenadas, mesmo critério de sort de byStatus/byOrigin)
+  // pra UI renderizar a tabela com colunas/linhas estáveis.
+  byOriginStatus: z.object({
+    origins: z.array(z.string()),
+    statuses: z.array(z.string()),
+    matrix: z.record(z.string(), z.record(z.string(), z.number())),
+    rowTotals: z.record(z.string(), z.number()),
+    colTotals: z.record(z.string(), z.number()),
+  }),
 });
 export type AppointmentsBreakdown = z.infer<typeof AppointmentsBreakdownSchema>;
 
@@ -278,6 +328,8 @@ export const ReportSchema = z.object({
   visitsByOrigin: OriginBreakdownSchema.optional(),
   // Agendamentos do período (status + origem) — widget do hero
   appointments: AppointmentsBreakdownSchema.optional(),
+  // Eficiência de aquisição (CAC global, CPL, CPMQL) — depende do custo via ads APIs
+  acquisition: AcquisitionSchema.optional(),
   // Funil de Vendas por origem/canal — 5 estágios (RevOps canônico)
   funnelByOrigin: FunnelByOriginSchema.optional(),
   // Novos campos para gráficos

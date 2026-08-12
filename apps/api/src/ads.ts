@@ -25,17 +25,20 @@
  *                nLruNd6tbsG0lE16LDzI  Canal do negócio
  *                9XPhm85vxOYEyZ6yRB9N  Artista escolhido
  */
-import type { GhlContact, GhlOpportunity, AdsMetrics, OriginBreakdown, PerformanceRow } from "@capone/shared";
+import type { Acquisition, GhlContact, GhlOpportunity, AdsMetrics, AdsPlatformMetrics, OriginBreakdown, PerformanceRow } from "@capone/shared";
 import { env } from "./env.js";
+import type { AdSpend } from "./googleAds.js";
 
 // ---------- Tipos internos ----------
 
 type CField = {
   id?: string;
+  fieldKey?: string | null;
   fieldValueString?: string | null;
   fieldValueNumber?: number | null;
   fieldValueArray?: string[] | null;
-  fieldValueDate?: number | null;
+  // GHL retorna data como ISO string ou unix ms (endpoints legados); aceitamos ambos.
+  fieldValueDate?: string | number | null;
   value?: unknown;
 };
 
@@ -46,7 +49,10 @@ function pickCF(customFields: readonly CField[] | undefined, id: string): string
   if (f.fieldValueString != null && f.fieldValueString !== "") return f.fieldValueString;
   if (typeof f.fieldValueNumber === "number") return String(f.fieldValueNumber);
   if (f.fieldValueArray && f.fieldValueArray.length > 0) return f.fieldValueArray.join(", ");
-  if (typeof f.fieldValueDate === "number") return new Date(f.fieldValueDate).toISOString().slice(0, 10);
+  if (f.fieldValueDate != null) {
+    if (typeof f.fieldValueDate === "string") return f.fieldValueDate.slice(0, 10);
+    return new Date(f.fieldValueDate).toISOString().slice(0, 10);
+  }
   if (f.value != null) return String(f.value);
   return null;
 }
@@ -167,15 +173,21 @@ export function aggregateAdsMetrics(
     }
   }
 
-  // Sem custo de ads disponível no GHL — campos ficam null
+  // Sem custo de ads disponível no GHL — campos ficam null (applyAdSpend
+  // preenche depois, se a Google/Meta Ads API estiver configurada).
   const buildOne = (p: AggRow) => ({
     visitas: p.visitas,
     oportunidades: p.oportunidades,
     convertidas: p.convertidas,
     receita: p.receita,
     custo: null as number | null,
+    cliques: null as number | null,
+    cpc: null as number | null,
+    ctr: null as number | null,
     roas: null as number | null,
     cpa: null as number | null,
+    cpl: null as number | null,
+    cpmql: null as number | null,
   });
 
   return {
@@ -184,6 +196,62 @@ export function aggregateAdsMetrics(
     tiktok: buildOne(byPlatform.tiktok),
     organico: buildOne(byPlatform.organico),
     outros: buildOne(byPlatform.outros),
+  };
+}
+
+/** Sobrepõe gasto real (Google Ads / Meta Ads API) nos buckets correspondentes.
+ *  Plataformas sem API configurada (ou sem dado no período) mantêm custo=null,
+ *  como antes — nunca quebra o relatório. Recalcula roas/cpa com o custo real. */
+export function applyAdSpend(
+  metrics: AdsMetrics,
+  spend: { google?: AdSpend | null; facebook?: AdSpend | null },
+): AdsMetrics {
+  const merge = (bucket: AdsPlatformMetrics, s: AdSpend | null | undefined): AdsPlatformMetrics => {
+    if (!s) return bucket;
+    return {
+      ...bucket,
+      custo: s.custo,
+      cliques: s.cliques,
+      cpc: s.cpc,
+      ctr: s.ctr,
+      roas: s.custo > 0 ? bucket.receita / s.custo : null,
+      cpa: s.custo > 0 && bucket.convertidas > 0 ? s.custo / bucket.convertidas : null, // "CAC" na UI
+      cpl: s.custo > 0 && bucket.visitas > 0 ? s.custo / bucket.visitas : null,
+      cpmql: s.custo > 0 && bucket.oportunidades > 0 ? s.custo / bucket.oportunidades : null,
+    };
+  };
+  return {
+    ...metrics,
+    google: merge(metrics.google, spend.google),
+    facebook: merge(metrics.facebook, spend.facebook),
+  };
+}
+
+/** Eficiência de aquisição global (blended): investimento total em ads dividido
+ *  por TODOS os leads/MQLs/clientes do período — inclusive orgânico e artistas.
+ *  MQL = lead que virou oportunidade (definição do negócio, jul/2026).
+ *  Sem nenhuma plataforma com custo → globais null (UI mostra estado "configure"). */
+export function computeAcquisition(
+  metrics: AdsMetrics,
+  leads: number,
+  mqls: number,
+  clientes: number,
+): Acquisition {
+  const plataformasComCusto = (["google", "facebook", "tiktok"] as const).filter(
+    (p) => metrics[p].custo != null,
+  );
+  const investimentoTotal = plataformasComCusto.reduce((s, p) => s + (metrics[p].custo ?? 0), 0);
+  const div = (denom: number): number | null =>
+    plataformasComCusto.length > 0 && denom > 0 ? investimentoTotal / denom : null;
+  return {
+    investimentoTotal,
+    plataformasComCusto: [...plataformasComCusto],
+    leads,
+    mqls,
+    clientes,
+    cplGlobal: div(leads),
+    cpmqlGlobal: div(mqls),
+    cacGlobal: div(clientes),
   };
 }
 

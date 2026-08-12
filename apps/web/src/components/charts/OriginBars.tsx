@@ -3,7 +3,7 @@
  * Barras horizontais para o destaque da origem no hero do dashboard.
  * Mostra os 4 buckets canônicos (Artistas / Social Pago / Social Orgânico /
  * Passante) + "Outros", com:
- *   - contagem de visitas (oportunidades)
+ *   - contagem de oportunidades
  *   - barra proporcional ao total
  *   - badge de conversão e receita
  * Tema dark via CSS vars.
@@ -54,7 +54,7 @@ export function OriginBars({ data }: { data: OriginBreakdown | undefined }) {
               <span className="ob-label">{LABELS[r.key]}</span>
               <span className="ob-meta">
                 <strong>{r.visitas.toLocaleString("pt-BR")}</strong>
-                <span style={{ color: "var(--muted)" }}> visitas</span>
+                <span style={{ color: "var(--muted)" }}> oportunidades</span>
                 {r.convertidas > 0 && (
                   <>
                     <span style={{ color: "var(--muted)", margin: "0 6px" }}>•</span>

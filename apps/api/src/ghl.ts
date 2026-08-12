@@ -37,11 +37,16 @@ const RETRY_BASE_MS = 500;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// 400 "Error occurred while searching for contact" é instabilidade do GHL, não erro de payload:
-// a mesma página funciona no retry (medido jul/2026: ~5 falhas a cada 100 chamadas).
+// Erros intermitentes do GHL que não são erro de payload/permissão — a mesma
+// chamada funciona no retry (medido jul/2026):
+//   - 400 "Error occurred while searching for contact" (~5 falhas a cada 100)
+//   - 401 "Command timed out" — gateway/timeout do lado do GHL mal reportado
+//     como 401; visto em /calendars/events, confirmado 5/5 sucesso no retry.
 function isRetryable(status: number, body: string): boolean {
   if (status === 429 || status >= 500) return true;
-  return status === 400 && body.includes("Error occurred while searching");
+  if (status === 400 && body.includes("Error occurred while searching")) return true;
+  if (status === 401 && body.includes("Command timed out")) return true;
+  return false;
 }
 
 /** Filtro de intervalo de datas no formato aceito pelo /search do GHL.
@@ -173,22 +178,67 @@ export async function fetchContactsInRange(start: string, end: string): Promise<
   });
 }
 
+/** Extrai a data da "Data da visita agendada" (custom field da opp, tipo DATE),
+ *  no formato YYYY-MM-DD. Retorna `null` se a opp não tiver o campo preenchido.
+ *  ÚNICA fonte de verdade do período da opp — SEM fallback: uma opp sem esse
+ *  campo preenchido não pertence a nenhum período (fica fora de todo relatório).
+ *  Decisão do negócio: "não faz sentido usar fallback, preciso que o report
+ *  puxe apenas o que é daquele período selecionado." Medido jul/2026: ~5% das
+ *  opps de Vendas/Pós-vendas não têm o campo — todas são "Perdido" antes de
+ *  qualquer visita ser agendada. */
+function getVisitaAgendadaDate(o: GhlOpportunity): string | null {
+  const cf = o.customFields?.find((c) => c.id === env.GHL_FIELD_VISITA_AGENDADA_ID);
+  const v = cf?.fieldValueDate;
+  if (v == null) return null;
+  // GHL retorna epoch ms (number) pra campos DATE — confirmado contra a API real
+  // (jul/2026). Também aceita string ISO por segurança (formato antigo/outro endpoint).
+  if (typeof v === "number") return new Date(v).toISOString().slice(0, 10);
+  return v.slice(0, 10);
+}
+
 export async function fetchOppsInRange(start: string, end: string): Promise<GhlOpportunity[]> {
-  // Filtro de data no servidor (campo "date_added", que corresponde ao createdAt do response).
-  // Continuamos filtrando local por pipeline (Vendas/Pós-vendas) — o GHL não filtra por isso.
-  const allPipelines = new Set([env.GHL_PIPELINE_VENDAS, env.GHL_PIPELINE_POS_VENDAS]);
-  const all = await fetchByPage<GhlOpportunity>(
-    `/opportunities/search`,
-    { locationId: env.GHL_LOCATION_ID, filters: dateRangeFilter("date_added", start, end) },
-    "opportunities",
-    "limit",
+  // Server-side o GHL só filtra por date_added (createdAt), não pela "Data da
+  // visita agendada" (testado: /opportunities/search rejeita filtro por
+  // customField com 422 "Invalid field"). Uma janela de date_added (ex.: opp
+  // criada até N dias antes/depois do período) foi tentada e SE PROVOU FRÁGIL:
+  // confirmado contra dados reais (ago/2026) que opps podem ser criadas MUITO
+  // antes da visita agendada — 6 opps de um lote de importação/backfill criadas
+  // em 14/04 com visita agendada em julho ficaram invisíveis com padding de
+  // -45 dias. Não existe janela fixa segura contra isso (o próximo backfill
+  // pode vir de qualquer data no passado).
+  //
+  // Fix: busca o HISTÓRICO INTEIRO de cada pipeline (filtro server-side por
+  // pipeline_id, sem filtro de data) e filtra localmente pela visita agendada.
+  // Garante 100% de acerto independente de quando a opp foi criada. Custo:
+  // ~3.5k opps hoje (bem abaixo do teto de 10k do GHL) — fetchByPage já avisa
+  // se um dia isso mudar.
+  const pipelines = [env.GHL_PIPELINE_VENDAS, env.GHL_PIPELINE_POS_VENDAS];
+  const byPipeline = await Promise.all(
+    pipelines.map((pipelineId) =>
+      fetchByPage<GhlOpportunity>(
+        `/opportunities/search`,
+        {
+          locationId: env.GHL_LOCATION_ID,
+          filters: [{ field: "pipeline_id", operator: "eq", value: pipelineId }],
+        },
+        "opportunities",
+        "limit",
+      ),
+    ),
   );
-  return all.filter((o) => {
-    if (!allPipelines.has(o.pipelineId)) return false;
-    // GHL retorna createdAt (ISO string), não dateAdded.
-    const d = o.createdAt?.slice(0, 10);
-    return d && d >= start && d <= end;
+  const inPipeline = byPipeline.flat();
+  const result = inPipeline.filter((o) => {
+    const visita = getVisitaAgendadaDate(o);
+    return visita != null && visita >= start && visita <= end;
   });
+  const semCampo = inPipeline.filter((o) => getVisitaAgendadaDate(o) == null).length;
+  if (semCampo > 0) {
+    console.warn(
+      `[ghl] fetchOppsInRange: ${semCampo} opp(s) de ${inPipeline.length} (Vendas+Pós, todo o ` +
+        `histórico) sem "Data da visita agendada" preenchida — excluídas de todo relatório, sem fallback.`,
+    );
+  }
+  return result;
 }
 
 /** Agendamentos dos calendários configurados cujo startTime cai no período.
@@ -200,14 +250,24 @@ export async function fetchAppointmentsInRange(start: string, end: string): Prom
   if (!calendarIds.length) return [];
   const startMs = Date.parse(`${start}T00:00:00.000Z`);
   const endMs = Date.parse(`${end}T23:59:59.999Z`);
+  // Agendamentos são um dado suplementar do hero — um calendário instável não
+  // pode derrubar o relatório inteiro. Falha (mesmo após os retries do
+  // ghlFetch) vira lista vazia pra esse calendário, com aviso no log.
   const perCalendar = await Promise.all(
     calendarIds.map(async (calendarId) => {
-      const res = await ghlFetch(
-        `/calendars/events?locationId=${env.GHL_LOCATION_ID}&calendarId=${calendarId}&startTime=${startMs}&endTime=${endMs}`,
-        { headers: { Version: "2021-04-15" } },
-      );
-      const json = (await res.json()) as { events?: GhlAppointment[] };
-      return Array.isArray(json.events) ? json.events : [];
+      try {
+        const res = await ghlFetch(
+          `/calendars/events?locationId=${env.GHL_LOCATION_ID}&calendarId=${calendarId}&startTime=${startMs}&endTime=${endMs}`,
+          { headers: { Version: "2021-04-15" } },
+        );
+        const json = (await res.json()) as { events?: GhlAppointment[] };
+        return Array.isArray(json.events) ? json.events : [];
+      } catch (e) {
+        console.warn(
+          `[ghl] fetchAppointmentsInRange: calendário ${calendarId} falhou, seguindo sem ele — ${e instanceof Error ? e.message : String(e)}`,
+        );
+        return [];
+      }
     }),
   );
   return perCalendar.flat();

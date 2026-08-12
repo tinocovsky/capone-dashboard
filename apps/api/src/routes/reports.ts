@@ -6,6 +6,8 @@ import { fetchAppointmentsInRange, fetchContactsByIds, fetchContactsInRange, fet
 import type { GhlContact } from "@capone/shared";
 import { getCachedReport, setCachedReport, saveSnapshot, getSnapshot, listSnapshots, writeAudit } from "../db.js";
 import { buildReport } from "../report.js";
+import { fetchGoogleAdsSpend } from "../googleAds.js";
+import { fetchMetaAdsSpend } from "../metaAds.js";
 
 export const reports = Router();
 
@@ -38,16 +40,21 @@ reports.get("/", async (req: AuthedRequest, res, next) => {
       }
     }
 
-    const [contacts, opps, appts] = await Promise.all([
+    const [contacts, opps, appts, googleSpend, facebookSpend] = await Promise.all([
       fetchContactsInRange(start, end),
       fetchOppsInRange(start, end),
       fetchAppointmentsInRange(start, end),
+      fetchGoogleAdsSpend(start, end),
+      fetchMetaAdsSpend(start, end),
     ]);
     const extraContacts = await fetchMissingContacts(contacts, [
       ...appts.map((a) => a.contactId),
       ...opps.map((o) => o.contactId),
     ]);
-    const report = buildReport(start, end, contacts, opps, appts, extraContacts);
+    const report = buildReport(start, end, contacts, opps, appts, extraContacts, {
+      google: googleSpend,
+      facebook: facebookSpend,
+    });
     await setCachedReport(start, end, report);
     await writeAudit(req.user!.id, "report.computed", { start, end, contacts: contacts.length, opps: opps.length });
     res.json(report);
@@ -62,16 +69,21 @@ reports.post("/snapshot", async (req: AuthedRequest, res, next) => {
     const parsed = ReportQuerySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "bad_body" });
     const { start, end } = parsed.data;
-    const [contacts, opps, appts] = await Promise.all([
+    const [contacts, opps, appts, googleSpend, facebookSpend] = await Promise.all([
       fetchContactsInRange(start, end),
       fetchOppsInRange(start, end),
       fetchAppointmentsInRange(start, end),
+      fetchGoogleAdsSpend(start, end),
+      fetchMetaAdsSpend(start, end),
     ]);
     const extraContacts = await fetchMissingContacts(contacts, [
       ...appts.map((a) => a.contactId),
       ...opps.map((o) => o.contactId),
     ]);
-    const report = buildReport(start, end, contacts, opps, appts, extraContacts);
+    const report = buildReport(start, end, contacts, opps, appts, extraContacts, {
+      google: googleSpend,
+      facebook: facebookSpend,
+    });
     const id = await saveSnapshot(req.user!.id, start, end, report);
     await writeAudit(req.user!.id, "report.snapshot", { id, start, end });
     res.json({ id });
