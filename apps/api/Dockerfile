@@ -12,10 +12,11 @@ COPY packages/shared/package.json /app/packages/shared/
 
 RUN pnpm install --frozen-lockfile
 
-# Copia source e compila
+# Copia source e compila (shared precisa de build porque o package.json aponta
+# pra ./src/index.ts direto — em prod Node nao carrega .ts sem loader)
 COPY packages/shared /app/packages/shared
 COPY apps/api /app/apps/api
-RUN pnpm --filter @capone/api build
+RUN pnpm --filter @capone/shared build && pnpm --filter @capone/api build
 
 
 FROM node:22.13-bookworm-slim AS runner
