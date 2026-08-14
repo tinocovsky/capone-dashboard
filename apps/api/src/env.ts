@@ -10,7 +10,7 @@ const EnvSchema = z.object({
   // Token GHL — em dev aceita placeholder para você conseguir subir o server
   // e logar mesmo sem ter o token do LeadConnector configurado. Os endpoints
   // /api/reports vão falhar em runtime se o token for o placeholder.
-  GHL_API_TOKEN: z.string().min(1),
+  GHL_API_TOKEN: z.string().min(1).default("unset-placeholder-rotate-me"),
   // Defaults são os IDs REAIS da location C8d1LN8IL9XdN9kDkaF9 (jul/2026) —
   // confirmados via /opportunities/pipelines?locationId=… e listagem de contatos.
   // O .env.example mantém placeholders, mas o código cai no default certo
@@ -53,9 +53,9 @@ const EnvSchema = z.object({
   // Pipeline de Barbearia (caso queira incluir separado)
   GHL_PIPELINE_BARBEARIA: z.string().default(""),
 
-  SUPABASE_URL: z.string().url(),
+  SUPABASE_URL: z.string().url().default("https://unset.supabase.co"),
   // Service role aceita placeholder "unset" em dev — você configura depois.
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).default("unset-placeholder-rotate-me"),
 
   // ---- Google Ads API (gasto/cliques/CPC/CTR reais — o GHL não guarda isso) ----
   // Todos opcionais: se algum faltar, o card de Google Ads simplesmente não
