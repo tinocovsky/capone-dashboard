@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.gitignore
+*.log
+.DS_Store
+.vercelignore
+.vercel
+node_modules
+apps/api/dist
+apps/web
+packages/shared/dist
