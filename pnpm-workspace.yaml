@@ -1,7 +1,9 @@
 packages:
   - "apps/*"
   - "packages/*"
+# pnpm 11+ exige allowBuilds explícito; sem isso, sharp/esbuild/core-js ficam
+# "ignored builds" e quebram o build no Railway (Nixpacks não roda prompts).
 allowBuilds:
-  core-js: set this to true or false
-  esbuild: set this to true or false
-  sharp: set this to true or false
+  core-js: true
+  esbuild: true
+  sharp: true

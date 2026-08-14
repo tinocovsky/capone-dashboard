@@ -1,15 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm --filter @capone/web run build",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "builds": [
-    {
-      "src": "apps/api/src/vercel-handler.ts",
-      "use": "@vercel/node",
-      "config": { "maxDuration": 10 }
-    }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "apps/api/src/vercel-handler.ts" }
-  ]
+  "installCommand": "pnpm install --no-frozen-lockfile"
 }
