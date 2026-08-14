@@ -32,7 +32,7 @@ RUN groupadd --system app && useradd --system --gid app app
 COPY --from=builder /app /app
 
 RUN chown -R app:app /app \
-    && pnpm prune --prod
+    && CI=true pnpm prune --prod
 
 USER app
 
