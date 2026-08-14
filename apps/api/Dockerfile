@@ -1,14 +1,18 @@
 FROM node:22.13-bookworm-slim AS builder
 WORKDIR /app
 
-RUN corepack enable
+# Instala pnpm direto (sem corepack — evita o bug da key signature rotacionada
+# que pega em corepack bundled com Node 22.13.x).
+RUN npm install -g pnpm@11.9.0
 
+# Copia manifestos primeiro (cache layer eficiente)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json /app/
 COPY apps/api/package.json /app/apps/api/
 COPY packages/shared/package.json /app/packages/shared/
 
 RUN pnpm install --frozen-lockfile
 
+# Copia source e compila
 COPY packages/shared /app/packages/shared
 COPY apps/api /app/apps/api
 RUN pnpm --filter @capone/api build
@@ -20,12 +24,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
 
+RUN npm install -g pnpm@11.9.0
+
+# Usuário não-root
 RUN groupadd --system app && useradd --system --gid app app
 
 COPY --from=builder /app /app
 
-RUN corepack enable \
-    && chown -R app:app /app \
+RUN chown -R app:app /app \
     && pnpm prune --prod
 
 USER app
